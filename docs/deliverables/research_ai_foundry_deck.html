@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新一代 AI 赋能科研平台建设方案</title>
+  <style>
+    @page {
+      size: 13.333in 7.5in;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      background: #e7edf0;
+      color: #172326;
+      font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+    }
+
+    body {
+      counter-reset: slide;
+    }
+
+    .slide {
+      position: relative;
+      width: 13.333in;
+      height: 7.5in;
+      margin: 0 auto 24px;
+      overflow: hidden;
+      background: #fbfcfb;
+      page-break-after: always;
+      counter-increment: slide;
+      display: flex;
+      flex-direction: column;
+      padding: 0.44in 0.56in;
+      box-shadow: 0 18px 45px rgba(23, 35, 38, 0.16);
+    }
+
+    @media print {
+      body {
+        background: white;
+      }
+
+      .slide {
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+
+    .slide::after {
+      content: counter(slide, decimal-leading-zero);
+      position: absolute;
+      right: 0.42in;
+      bottom: 0.28in;
+      color: #688186;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+    }
+
+    .kicker {
+      color: #007b73;
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 7.1in;
+      font-size: 50px;
+      line-height: 1.15;
+      letter-spacing: 0;
+      color: #142426;
+    }
+
+    h2 {
+      font-size: 40px;
+      line-height: 1.2;
+      color: #142426;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      font-size: 23px;
+      color: #173136;
+      margin-bottom: 12px;
+    }
+
+    p,
+    li {
+      font-size: 21px;
+      line-height: 1.48;
+    }
+
+    ul {
+      margin: 18px 0 0;
+      padding-left: 25px;
+    }
+
+    li + li {
+      margin-top: 11px;
+    }
+
+    .hero {
+      padding: 0;
+      background: #132729;
+      color: #f5fbfa;
+      display: block;
+    }
+
+    .hero img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(8, 30, 32, 0.92) 0%, rgba(8, 30, 32, 0.76) 38%, rgba(8, 30, 32, 0.18) 78%);
+      z-index: 1;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      width: 7.6in;
+      padding: 0.78in 0.72in;
+    }
+
+    .hero h1 {
+      color: white;
+      font-size: 55px;
+    }
+
+    .hero .subtitle {
+      margin-top: 22px;
+      color: #d8f1ed;
+      font-size: 26px;
+      line-height: 1.42;
+      max-width: 6.5in;
+    }
+
+    .hero .meta {
+      margin-top: 0.9in;
+      color: #a9c9c7;
+      font-size: 18px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.3in;
+      flex: 1;
+      align-items: stretch;
+      margin-top: 0.28in;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.22in;
+      margin-top: 0.28in;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #d5e3e1;
+      border-radius: 8px;
+      padding: 26px;
+      box-shadow: 0 10px 26px rgba(30, 59, 57, 0.08);
+    }
+
+    .card.dark {
+      background: #173136;
+      color: #eef9f6;
+      border-color: #173136;
+    }
+
+    .card.dark h3 {
+      color: white;
+    }
+
+    .two-col .card {
+      min-height: 4.65in;
+    }
+
+    .three-col .card {
+      min-height: 3.15in;
+    }
+
+    .tag-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+
+    .tag {
+      border: 1px solid #b8d6d1;
+      color: #006d67;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 16px;
+      font-weight: 700;
+      background: #f2faf7;
+    }
+
+    .big-number {
+      font-size: 64px;
+      line-height: 1;
+      font-weight: 800;
+      color: #008578;
+      margin-bottom: 14px;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.18in;
+      margin-top: 0.28in;
+    }
+
+    .compare .head {
+      padding: 16px 18px;
+      color: white;
+      font-size: 21px;
+      font-weight: 800;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .compare .body {
+      min-height: 4.35in;
+      background: white;
+      border: 1px solid #d5e3e1;
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      padding: 22px;
+    }
+
+    .old .head {
+      background: #6b7780;
+    }
+
+    .now .head {
+      background: #007b73;
+    }
+
+    .next .head {
+      background: #b95c31;
+    }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 2.1in 1fr 2.1in;
+      gap: 0.25in;
+      align-items: center;
+      margin-top: 0.28in;
+      flex: 1;
+    }
+
+    .pillar {
+      border: 1px solid #c8dbd8;
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 24px;
+      min-height: 5.15in;
+    }
+
+    .center-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .layer {
+      border-radius: 8px;
+      padding: 22px 24px;
+      color: #102628;
+      border: 1px solid #c8dbd8;
+      background: #eef8f5;
+      font-weight: 800;
+      font-size: 23px;
+    }
+
+    .layer:nth-child(2) {
+      background: #fff7ea;
+      border-color: #e5c795;
+    }
+
+    .layer:nth-child(3) {
+      background: #f4f1fb;
+      border-color: #cfc4e8;
+    }
+
+    .layer:nth-child(4) {
+      background: #f8fafa;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.13in;
+      margin-top: 0.32in;
+      align-items: stretch;
+    }
+
+    .step {
+      background: white;
+      border: 1px solid #d5e3e1;
+      border-radius: 8px;
+      padding: 20px;
+      position: relative;
+      min-height: 3.28in;
+    }
+
+    .step::before {
+      content: "";
+      position: absolute;
+      top: 30px;
+      right: -0.1in;
+      width: 0.18in;
+      height: 2px;
+      background: #90bab4;
+    }
+
+    .step:last-child::before {
+      display: none;
+    }
+
+    .step small {
+      display: block;
+      color: #007b73;
+      font-weight: 800;
+      margin-bottom: 14px;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.18in;
+      margin-top: 0.3in;
+      flex: 1;
+      align-items: stretch;
+    }
+
+    .mini {
+      background: white;
+      border-left: 5px solid #008578;
+      border-radius: 8px;
+      padding: 20px;
+      min-height: 1.62in;
+      box-shadow: 0 8px 18px rgba(30, 59, 57, 0.08);
+    }
+
+    .mini:nth-child(2n) {
+      border-left-color: #b95c31;
+    }
+
+    .mini:nth-child(3n) {
+      border-left-color: #6f5da8;
+    }
+
+    .mini strong {
+      display: block;
+      font-size: 21px;
+      margin-bottom: 10px;
+    }
+
+    .mini span {
+      font-size: 17px;
+      color: #4f676b;
+      line-height: 1.35;
+    }
+
+    .scenario {
+      display: grid;
+      grid-template-columns: 1.3in 1fr;
+      gap: 0.22in;
+      align-items: start;
+      padding: 22px;
+      background: white;
+      border: 1px solid #d5e3e1;
+      border-radius: 8px;
+    }
+
+    .scenario + .scenario {
+      margin-top: 0.16in;
+    }
+
+    .badge {
+      width: 1.2in;
+      height: 1.2in;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: #007b73;
+      font-size: 30px;
+      font-weight: 900;
+    }
+
+    .badge.orange {
+      background: #b95c31;
+    }
+
+    .badge.purple {
+      background: #6f5da8;
+    }
+
+    .roadmap {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.12in;
+      margin-top: 0.3in;
+    }
+
+    .phase {
+      background: white;
+      border: 1px solid #d5e3e1;
+      border-radius: 8px;
+      padding: 20px;
+      min-height: 4.95in;
+    }
+
+    .phase h3 {
+      font-size: 21px;
+    }
+
+    .phase .time {
+      color: #b95c31;
+      font-size: 16px;
+      font-weight: 800;
+      margin-bottom: 12px;
+    }
+
+    .quote {
+      margin-top: 0.32in;
+      padding: 34px;
+      border-radius: 8px;
+      background: #173136;
+      color: white;
+      font-size: 33px;
+      line-height: 1.45;
+      font-weight: 800;
+    }
+
+    .footer-note {
+      position: absolute;
+      left: 0.56in;
+      bottom: 0.28in;
+      color: #688186;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <section class="slide hero">
+    <img src="assets/research-ai-foundry-hero.png" alt="">
+    <div class="hero-content">
+      <div class="kicker">新一代 AI 赋能科研建设方案</div>
+      <h1>新一代 AI 赋能科研平台</h1>
+      <p class="subtitle">让 AI 真正进入科研过程，帮助教师读文献、做数据、写材料、沉淀团队经验，并按需生成安全可用的科研小工具。</p>
+      <p class="meta">方案书配套汇报版 · 2026</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">核心判断</div>
+    <h2>不是再做一个“AI 工具超市”，而是建设科研工作的新基础设施</h2>
+    <div class="three-col">
+      <div class="card">
+        <div class="big-number">01</div>
+        <h3>一个科研工作台</h3>
+        <p>教师在一个统一入口完成文献、数据、写作、项目申报、实验记录和团队协作。</p>
+      </div>
+      <div class="card">
+        <div class="big-number">02</div>
+        <h3>一个 AI 科研助手</h3>
+        <p>教师用自然语言安排任务，系统帮助查文献、读材料、做分析、生成图表、检查风险。</p>
+      </div>
+      <div class="card dark">
+        <div class="big-number" style="color:#7bd6c9;">03</div>
+        <h3>一个工具生成车间</h3>
+        <p>按任务生成研究小站、小脚本、研究看板和追踪器，并经过测试和审批后使用。</p>
+      </div>
+    </div>
+    <div class="footer-note">面向普通教师、课题组、学院和科研管理部门</div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">为什么需要</div>
+    <h2>现有方案常解决“入口”问题，但不一定解决科研过程问题</h2>
+    <div class="two-col">
+      <div class="card">
+        <h3>常见做法</h3>
+        <ul>
+          <li>把文献检索、论文润色、数据绘图放在一起</li>
+          <li>聚合模型入口、数据集、课程资源</li>
+          <li>提供提示词模板和问答机器人</li>
+          <li>展示效果强，但使用后仍靠教师自己串流程</li>
+        </ul>
+      </div>
+      <div class="card dark">
+        <h3>真正问题</h3>
+        <ul>
+          <li>文献、数据、图表、写作材料彼此割裂</li>
+          <li>分析过程难复查，团队经验难沉淀</li>
+          <li>生成内容缺少来源和证据</li>
+          <li>新工具需求不断出现，固定平台难快速响应</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">教师视角</div>
+    <h2>教师需要的不是更多入口，而是有人帮他把科研任务做完一段</h2>
+    <div class="matrix">
+      <div class="mini"><strong>文献太多</strong><span>快速判断哪些论文重要，形成研究路线和证据卡片。</span></div>
+      <div class="mini"><strong>数据太杂</strong><span>检查数据问题，推荐统计方法，生成可复查图表。</span></div>
+      <div class="mini"><strong>写作太散</strong><span>把文献、数据和团队成果组织成论文和项目材料。</span></div>
+      <div class="mini"><strong>经验难留</strong><span>把脚本、图表、实验方案和评审意见沉淀给团队。</span></div>
+      <div class="mini"><strong>流程太长</strong><span>从检索、分析到写作需要跨多个软件反复切换。</span></div>
+      <div class="mini"><strong>风险难控</strong><span>AI 生成内容必须知道依据、范围和责任人。</span></div>
+      <div class="mini"><strong>工具不够用</strong><span>新课题经常需要新的页面、看板、脚本或采集器。</span></div>
+      <div class="mini"><strong>成本难管</strong><span>模型调用越来越多，需要知道钱花在哪里。</span></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">平台定位</div>
+    <h2>把 AI 从“问答工具”变成“科研过程助手”</h2>
+    <div class="compare">
+      <div class="old">
+        <div class="head">过去：工具导航</div>
+        <div class="body">
+          <ul>
+            <li>告诉教师去哪里找工具</li>
+            <li>工具之间互不连接</li>
+            <li>结果难以追溯</li>
+            <li>团队资产沉淀少</li>
+          </ul>
+        </div>
+      </div>
+      <div class="now">
+        <div class="head">现在：科研工作台</div>
+        <div class="body">
+          <ul>
+            <li>围绕真实任务组织材料</li>
+            <li>文献、数据、图表、写作互相连接</li>
+            <li>结果能回到来源</li>
+            <li>形成课题组记忆</li>
+          </ul>
+        </div>
+      </div>
+      <div class="next">
+        <div class="head">下一步：工具生成车间</div>
+        <div class="body">
+          <ul>
+            <li>按需生成研究小站</li>
+            <li>按需生成数据脚本</li>
+            <li>按需生成追踪看板</li>
+            <li>生成物测试后复用</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">教师能做什么</div>
+    <h2>四类高频科研任务先做深</h2>
+    <div class="matrix">
+      <div class="mini"><strong>读文献</strong><span>上传论文，提取方法、结论、局限和关键证据。</span></div>
+      <div class="mini"><strong>理方向</strong><span>把一批论文整理成研究路线图、方法比较表和主题看板。</span></div>
+      <div class="mini"><strong>做数据</strong><span>检查数据、清洗字段、推荐统计方法、生成图表。</span></div>
+      <div class="mini"><strong>写材料</strong><span>围绕证据和数据生成论文、基金、开题、结题材料。</span></div>
+      <div class="mini"><strong>追热点</strong><span>定期跟踪新论文、新项目、新关键词和方法变化。</span></div>
+      <div class="mini"><strong>做小站</strong><span>为课题组或项目生成内部研究页面和资料入口。</span></div>
+      <div class="mini"><strong>留过程</strong><span>保存数据、脚本、图表、证据和写作片段。</span></div>
+      <div class="mini"><strong>管风险</strong><span>显示来源、权限、审批、成本和审计记录。</span></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">特色能力一</div>
+    <h2>按需生成研究小站：让课题组成果更好组织和展示</h2>
+    <div class="flow">
+      <div class="step"><small>1</small><h3>上传材料</h3><p>论文、项目书、数据说明、团队介绍。</p></div>
+      <div class="step"><small>2</small><h3>说明需求</h3><p>“生成一个内部研究小站。”</p></div>
+      <div class="step"><small>3</small><h3>自动整理</h3><p>研究方向、代表论文、路线图、数据集说明。</p></div>
+      <div class="step"><small>4</small><h3>预览确认</h3><p>负责人检查内容、权限和访问范围。</p></div>
+      <div class="step"><small>5</small><h3>校内使用</h3><p>按课题组、学院或项目范围共享。</p></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">特色能力二</div>
+    <h2>从 Excel 到论文图表：既要快，也要能复查</h2>
+    <div class="architecture">
+      <div class="pillar">
+        <h3>教师输入</h3>
+        <ul>
+          <li>Excel 或 CSV 数据</li>
+          <li>研究问题说明</li>
+          <li>图表或论文要求</li>
+          <li>已有文献依据</li>
+        </ul>
+      </div>
+      <div class="center-stack">
+        <div class="layer">检查缺失值、异常值和字段问题</div>
+        <div class="layer">推荐统计方法并生成处理过程</div>
+        <div class="layer">输出图表、解释结果、提示风险</div>
+        <div class="layer">保存数据来源、参数和过程记录</div>
+      </div>
+      <div class="pillar">
+        <h3>教师得到</h3>
+        <ul>
+          <li>论文图表</li>
+          <li>结果说明</li>
+          <li>可复查过程</li>
+          <li>后续可复用模板</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">特色能力三</div>
+    <h2>自动追踪研究方向：从临时检索变成持续情报</h2>
+    <div class="three-col">
+      <div class="card">
+        <h3>教师设置方向</h3>
+        <p>例如“AI 辅助数学教育”“水稻基因表达分析”“大模型与科研写作”。</p>
+      </div>
+      <div class="card">
+        <h3>平台定期更新</h3>
+        <p>跟踪新论文、新项目、新关键词、常用方法、代表机构和热点变化。</p>
+      </div>
+      <div class="card dark">
+        <h3>生成研究看板</h3>
+        <p>用图表、列表和路线图帮助教师和学院持续掌握方向变化。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">特色能力四</div>
+    <h2>可复现科研包：把成果背后的过程一起保存</h2>
+    <div class="architecture">
+      <div class="pillar">
+        <h3>保存什么</h3>
+        <ul>
+          <li>原始数据</li>
+          <li>处理过程</li>
+          <li>分析脚本</li>
+          <li>图表和结果</li>
+        </ul>
+      </div>
+      <div class="center-stack">
+        <div class="layer">数据从哪里来</div>
+        <div class="layer">中间怎么处理</div>
+        <div class="layer">图表怎么生成</div>
+        <div class="layer">结论依据是什么</div>
+      </div>
+      <div class="pillar">
+        <h3>解决什么</h3>
+        <ul>
+          <li>论文投稿前复查</li>
+          <li>课题组成员交接</li>
+          <li>项目申报复用</li>
+          <li>学院资产沉淀</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">平台模块</div>
+    <h2>六个中心，覆盖教师使用和学校治理</h2>
+    <div class="matrix">
+      <div class="mini"><strong>统一科研工作台</strong><span>自然语言安排任务，也保留传统页面。</span></div>
+      <div class="mini"><strong>文献与证据中心</strong><span>论文解析、证据卡片、路线图、方向追踪。</span></div>
+      <div class="mini"><strong>数据与图表中心</strong><span>数据清洗、统计分析、绘图和过程保存。</span></div>
+      <div class="mini"><strong>写作与申报中心</strong><span>论文、基金、开题、结题和报奖材料。</span></div>
+      <div class="mini"><strong>科研能力生成中心</strong><span>生成研究小站、脚本、看板、追踪器。</span></div>
+      <div class="mini"><strong>治理与安全中心</strong><span>权限、共享、审批、审计、风险和成本。</span></div>
+      <div class="mini"><strong>课题组知识库</strong><span>沉淀论文、脚本、图表、经验和模板。</span></div>
+      <div class="mini"><strong>学院驾驶舱</strong><span>掌握使用情况、方向积累、成本和风险。</span></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">安全运行</div>
+    <h2>生成的小工具不能失控：先测试、再审批、后共享</h2>
+    <div class="flow">
+      <div class="step"><small>1</small><h3>提出需求</h3><p>教师说明要生成什么工具或页面。</p></div>
+      <div class="step"><small>2</small><h3>检查权限</h3><p>确认可使用哪些论文、数据和项目材料。</p></div>
+      <div class="step"><small>3</small><h3>安全预览</h3><p>先在隔离环境中生成和运行。</p></div>
+      <div class="step"><small>4</small><h3>人工确认</h3><p>负责人检查内容、风险和共享范围。</p></div>
+      <div class="step"><small>5</small><h3>记录复用</h3><p>保存负责人、版本、日志和使用范围。</p></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">建设路径</div>
+    <h2>先打底座，再做标杆场景，最后形成校内工具生态</h2>
+    <div class="roadmap">
+      <div class="phase"><div class="time">0-2 个月</div><h3>安全和运行底座</h3><p>任务记录、权限检查、审批流程、运行日志、成本记录。</p></div>
+      <div class="phase"><div class="time">2-4 个月</div><h3>研究小站生成</h3><p>课题组小站、文献路线图、数据看板、项目检查页。</p></div>
+      <div class="phase"><div class="time">4-7 个月</div><h3>脚本和数据分析</h3><p>数据清洗、统计分析、图表生成、引用检查。</p></div>
+      <div class="phase"><div class="time">7-12 个月</div><h3>可复现科研包</h3><p>数据、过程、图表、证据、写作片段绑定保存。</p></div>
+      <div class="phase"><div class="time">12-18 个月</div><h3>校内工具生态</h3><p>平台能力标准化，逐步支持校内系统接入。</p></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">标杆场景</div>
+    <h2>三个最适合先做出来展示和试点的场景</h2>
+    <div style="margin-top:0.3in;">
+      <div class="scenario">
+        <div class="badge">1</div>
+        <div><h3>一小时生成课题组研究小站</h3><p>上传论文、项目书和数据说明，生成研究方向、代表论文、路线图、数据集说明、项目进度和内部资料入口。</p></div>
+      </div>
+      <div class="scenario">
+        <div class="badge orange">2</div>
+        <div><h3>从 Excel 到可复现论文图表</h3><p>完成数据检查、统计分析、图表生成、结果解释和过程保存，减少重复劳动。</p></div>
+      </div>
+      <div class="scenario">
+        <div class="badge purple">3</div>
+        <div><h3>自动追踪一个研究方向</h3><p>定期收集新论文、新项目、新关键词和方法变化，生成研究看板。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">治理原则</div>
+    <h2>越能生成，越要有规则</h2>
+    <div class="two-col">
+      <div class="card">
+        <h3>必须坚持</h3>
+        <ul>
+          <li>生成脚本先测试再共享</li>
+          <li>生成页面先预览再发布</li>
+          <li>重要结论必须能追溯来源</li>
+          <li>生成物必须有负责人、范围、版本和日志</li>
+        </ul>
+      </div>
+      <div class="card dark">
+        <h3>必须审批</h3>
+        <ul>
+          <li>敏感数据外发</li>
+          <li>公开发布页面</li>
+          <li>昂贵模型调用</li>
+          <li>删除或修改共享资产</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">评价指标</div>
+    <h2>评价重点不是功能数量，而是真实科研价值</h2>
+    <div class="matrix">
+      <div class="mini"><strong>使用</strong><span>活跃教师数、活跃课题组数、上传文献数、数据项目数。</span></div>
+      <div class="mini"><strong>效率</strong><span>文献整理、数据清洗、图表生成、项目书初稿节省时间。</span></div>
+      <div class="mini"><strong>质量</strong><span>引用可追溯率、数据分析可复现率、AI 产物采纳率。</span></div>
+      <div class="mini"><strong>治理</strong><span>高风险操作审计覆盖率、脚本测试通过率、违规闭环率。</span></div>
+      <div class="mini"><strong>成本</strong><span>模型调用成本、缓存命中率、批量任务占比。</span></div>
+      <div class="mini"><strong>沉淀</strong><span>可复用脚本、小站、看板、科研包和模板数量。</span></div>
+      <div class="mini"><strong>协同</strong><span>课题组共享资产数、学院共用模板数。</span></div>
+      <div class="mini"><strong>安全</strong><span>敏感数据拦截、权限校验和审批执行情况。</span></div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">预期成果</div>
+    <h2>学校最终获得：持续生产科研能力的方法</h2>
+    <div class="three-col">
+      <div class="card">
+        <h3>教师更省力</h3>
+        <p>文献整理、数据分析、图表生成、论文写作和项目申报更加顺畅。</p>
+      </div>
+      <div class="card">
+        <h3>团队能沉淀</h3>
+        <p>论文、数据、脚本、图表、模板和经验变成课题组长期资产。</p>
+      </div>
+      <div class="card dark">
+        <h3>学校能治理</h3>
+        <p>看得见使用、成本、权限、风险和实际成效，避免 AI 应用失控。</p>
+      </div>
+    </div>
+    <div class="quote">从“使用 AI 工具”，升级为“持续生成科研工具和科研知识资产”。</div>
+  </section>
+
+  <section class="slide">
+    <div class="kicker">结束页</div>
+    <h2>推荐汇报表述</h2>
+    <div class="quote">
+      我们不是再建设一个 AI 工具入口，而是建设一种新的科研基础设施。它让教师更容易完成文献、数据、写作和申报，也让课题组和学院能够沉淀知识、复用工具、管理风险，逐步形成学校自己的科研能力生产体系。
+    </div>
+  </section>
+</body>
+</html>

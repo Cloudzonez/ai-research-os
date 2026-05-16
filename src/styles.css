@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html {
+    font-family: Inter, "Noto Sans SC", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  }
+  body { margin: 0; }
+  button, textarea, input { font: inherit; }
+  ::selection { @apply bg-emerald-500/20; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-zinc-200 dark:bg-white/10 rounded-full; }
+}
+
+@layer components {
+  /* ---- Surfaces ---- */
+  .surface {
+    @apply bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/5 rounded-xl;
+  }
+  .surface-alt {
+    @apply bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-white/5 rounded-xl;
+  }
+  .surface-hover {
+    @apply surface transition-all duration-200 hover:border-gray-300 dark:hover:border-white/10;
+  }
+  .surface-inset {
+    @apply bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-white/5 rounded-lg;
+  }
+
+  /* ---- Text ---- */
+  .text-main {
+    @apply text-zinc-900 dark:text-zinc-100;
+  }
+  .text-dull {
+    @apply text-zinc-600 dark:text-zinc-400;
+  }
+  .text-muted {
+    @apply text-zinc-400 dark:text-zinc-500;
+  }
+  .text-faint {
+    @apply text-zinc-300 dark:text-zinc-600;
+  }
+
+  /* ---- Buttons ---- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 h-9 text-[13px] font-medium
+           transition-all duration-200 select-none
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50
+           disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97];
+  }
+  .btn-primary {
+    @apply btn bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm shadow-emerald-500/20;
+  }
+  .btn-secondary {
+    @apply btn bg-gray-100 dark:bg-white/10 text-zinc-700 dark:text-zinc-200
+           hover:bg-gray-200 dark:hover:bg-white/20 border border-gray-200 dark:border-white/10;
+  }
+  .btn-ghost {
+    @apply btn text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white
+           hover:bg-gray-100 dark:hover:bg-white/5;
+  }
+  .btn-danger {
+    @apply btn bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400
+           hover:bg-red-100 dark:hover:bg-red-500/20 border border-red-200 dark:border-red-500/20;
+  }
+  .btn-icon {
+    @apply inline-flex items-center justify-center rounded-lg h-8 w-8 text-muted
+           hover:bg-gray-100 dark:hover:bg-white/10 hover:text-dull
+           transition-colors disabled:opacity-30 disabled:cursor-not-allowed;
+  }
+
+  /* ---- Input ---- */
+  .input {
+    @apply w-full rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-white/10
+           px-4 py-3 text-sm text-zinc-900 dark:text-white
+           placeholder:text-zinc-400 dark:placeholder:text-zinc-500
+           outline-none transition-all duration-200
+           focus:border-emerald-500/50 focus:bg-white dark:focus:bg-zinc-800
+           focus:ring-2 focus:ring-emerald-500/10;
+  }
+
+  /* ---- Badge ---- */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium
+           bg-gray-100 dark:bg-white/5 text-zinc-600 dark:text-zinc-500;
+  }
+  .badge-accent {
+    @apply badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400;
+  }
+
+  /* ---- Divider ---- */
+  .divider {
+    @apply w-full h-px bg-gray-200 dark:bg-white/5;
+  }
+
+  /* ---- Glass (dark only, light is opaque) ---- */
+  .glass {
+    @apply bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-white/5;
+  }
+
+  /* ---- Progress bar ---- */
+  .progress-track {
+    @apply h-full rounded-full bg-gray-200 dark:bg-white/5 overflow-hidden;
+  }
+  .progress-fill {
+    @apply h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-700;
+  }
+
+  /* ---- Animations ---- */
+  .slide-in { animation: slideIn 0.2s ease-out; }
+  .fade-in { animation: fadeIn 0.15s ease-out; }
+}
+
+@layer utilities {
+  @keyframes slideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-slide-up { animation: slideUp 0.2s ease-out; }
+  .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+}

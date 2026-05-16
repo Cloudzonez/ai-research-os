@@ -1,0 +1,53 @@
+{
+  "name": "ai-research-os",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:e2e": "vite --host 127.0.0.1 --port 5179 --strictPort",
+    "dev:server": "node server/index.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
+    "worker": "node server/workers/runner.js",
+    "dev:all:full": "concurrently \"npm run dev\" \"npm run dev:server\" \"npm run worker\"",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test:trackers": "node --test tests/tracker-crawl.test.js",
+    "test:crawlers": "node --test tests/standard-crawler.test.js tests/connector-parser.test.js",
+    "test:crawlers:live": "LIVE_CRAWLER_TEST=1 node --test tests/live-standard-crawler.test.js",
+    "test:pipeline": "node --test tests/ai-crawler-pipeline.test.js",
+    "test:e2e": "NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost playwright test",
+    "test:pure": "node --test tests/deepseek-parse.test.js tests/model-mesh.test.js tests/sandbox-validate.test.js tests/approval-pure.test.js tests/cache-service.test.js",
+    "test:services": "node --test tests/token-flow.test.js tests/queue-service.test.js tests/storage-service.test.js tests/paper-analyzer.test.js tests/context-engine.test.js",
+    "test:orchestrators": "node --test tests/tool-registry.test.js tests/mcp-gateway.test.js tests/agent-runner.test.js",
+    "test:middleware": "node --test tests/auth-middleware.test.js",
+    "test:worker": "node --test tests/worker-runner.test.js",
+    "test:routes": "node --test tests/routes/*.test.js",
+    "test:backend": "node --test tests/deepseek-parse.test.js tests/model-mesh.test.js tests/sandbox-validate.test.js tests/approval-pure.test.js tests/cache-service.test.js tests/token-flow.test.js tests/queue-service.test.js tests/storage-service.test.js tests/paper-analyzer.test.js tests/context-engine.test.js tests/tool-registry.test.js tests/mcp-gateway.test.js tests/auth-middleware.test.js tests/standard-crawler.test.js tests/connector-parser.test.js tests/tracker-crawl.test.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.468.0",
+    "mongoose": "^9.6.1",
+    "morgan": "^1.10.1",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-pdf": "^10.4.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17"
+  }
+}
