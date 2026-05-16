@@ -48,7 +48,7 @@ export async function dequeue(types, workerId) {
       type: { $in: types },
       status: "pending",
       scheduledAt: { $lte: now },
-      $or: [{ retries: { $lt: "$maxRetries" } }].filter(Boolean),
+      $expr: { $lt: ["$retries", "$maxRetries"] },
     },
     { status: "running", startedAt: now, $inc: { retries: 1 } },
     { sort: { scheduledAt: 1 }, new: true }
