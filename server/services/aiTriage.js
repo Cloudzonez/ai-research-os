@@ -1,5 +1,6 @@
 import { chat as defaultChat } from "./deepseek.js";
 import { buildTriagePrompt as buildPrompt } from "../prompts/aiTriage.js";
+import { getActiveDebugLog } from "./trackerDebugLog.js";
 
 const BATCH_SIZE = 25;
 const DEFAULT_MIN_RELEVANCE = 5;
@@ -19,6 +20,7 @@ const DEFAULT_MIN_RELEVANCE = 5;
  * @returns {Promise<TriageSummary>}
  */
 export async function runAITriage(trackerSpec, paperIds, options = {}) {
+  const debugLog = getActiveDebugLog();
   const {
     PaperModel,
     chatFn = defaultChat,
@@ -27,6 +29,7 @@ export async function runAITriage(trackerSpec, paperIds, options = {}) {
   } = options;
 
   if (!paperIds || paperIds.length === 0) {
+    if (debugLog) debugLog.warn("AI triage: no paper IDs provided, skipping");
     return {
       totalCrawled: 0,
       triaged: 0,
@@ -40,16 +43,36 @@ export async function runAITriage(trackerSpec, paperIds, options = {}) {
     throw new Error("PaperModel is required for runAITriage");
   }
 
+  if (debugLog) debugLog.begin(`AI triage — ${paperIds.length} papers, tracker="${trackerSpec.name}"`);
+
   // Fetch all papers
   const allPapers = [];
+  let skippedNotPending = 0;
+  let skippedNotFound = 0;
   for (const id of paperIds) {
     const paper = await PaperModel.findById(id);
-    if (paper && paper.status === "triage_pending") {
-      allPapers.push(paper);
+    if (!paper) {
+      skippedNotFound++;
+      if (debugLog) debugLog.detail(`AI triage: paper not found in DB`, { paperId: id });
+      continue;
     }
+    if (paper.status !== "triage_pending") {
+      skippedNotPending++;
+      if (debugLog) debugLog.detail(`AI triage: paper already has status "${paper.status}", skipping`, { paperId: id, title: paper.title?.slice(0, 60) });
+      continue;
+    }
+    allPapers.push(paper);
   }
 
+  if (debugLog) debugLog.info("AI triage: papers loaded", {
+    requested: paperIds.length,
+    pending: allPapers.length,
+    skippedNotFound,
+    skippedAlreadyTriaged: skippedNotPending,
+  });
+
   if (allPapers.length === 0) {
+    if (debugLog) debugLog.end("AI triage: no pending papers to triage", { totalRequested: paperIds.length, skipped: skippedNotPending + skippedNotFound });
     return {
       totalCrawled: paperIds.length,
       triaged: 0,
@@ -69,18 +92,26 @@ export async function runAITriage(trackerSpec, paperIds, options = {}) {
   let totalBreakthroughs = 0;
   const byCategory = {};
 
+  let batchNum = 0;
   for (const batch of batches) {
+    batchNum++;
+    if (debugLog) debugLog.begin(`AI triage: batch ${batchNum}/${batches.length} — ${batch.length} papers`);
+
     const prompt = buildPrompt(trackerSpec, batch);
     let assessments;
 
     try {
+      const t0 = Date.now();
       const result = await chatFn(
         [{ role: "user", content: prompt }],
         "en",
         { temperature: 0.2, maxTokens: 4000 }
       );
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+      if (debugLog) debugLog.detail(`AI triage: DeepSeek response received`, { elapsedSec: elapsed, promptLen: prompt.length, responseLen: result.content?.length || 0 });
       assessments = parseTriageResponse(result.content, batch.length);
     } catch (err) {
+      if (debugLog) debugLog.error(`AI triage: DeepSeek call FAILED`, { error: err.message, batchSize: batch.length });
       console.error("AI triage call failed:", err.message);
       // Mark remaining papers as triaged with default values on AI failure
       assessments = batch.map((_, i) => ({
@@ -93,6 +124,7 @@ export async function runAITriage(trackerSpec, paperIds, options = {}) {
     }
 
     // Update each paper with its assessment
+    let batchRelevant = 0;
     for (const assessment of assessments) {
       const paperIndex = assessment.index - 1;
       if (paperIndex < 0 || paperIndex >= batch.length) continue;
@@ -102,6 +134,14 @@ export async function runAITriage(trackerSpec, paperIds, options = {}) {
       const category = normalizeCategory(assessment.category);
       const novelty = normalizeNovelty(assessment.novelty);
       const reasoning = String(assessment.reasoning || "").slice(0, 300);
+
+      if (debugLog) debugLog.detail(`AI triage: paper scored`, {
+        title: paper.title?.slice(0, 60),
+        relevance,
+        category,
+        novelty,
+        reasoning: reasoning.slice(0, 80),
+      });
 
       // Update paper in DB
       if (paper.save) {
@@ -115,11 +155,20 @@ export async function runAITriage(trackerSpec, paperIds, options = {}) {
       }
 
       // Tally stats
-      if (relevance >= minRelevance) totalRelevant++;
+      if (relevance >= minRelevance) { totalRelevant++; batchRelevant++; }
       if (novelty === "breakthrough") totalBreakthroughs++;
       byCategory[category] = (byCategory[category] || 0) + 1;
     }
+
+    if (debugLog) debugLog.end(`AI triage: batch ${batchNum} done`, { papers: batch.length, relevant: batchRelevant, irrelevant: batch.length - batchRelevant });
   }
+
+  if (debugLog) debugLog.end("AI triage complete", {
+    triaged: allPapers.length,
+    relevant: totalRelevant,
+    breakthroughs: totalBreakthroughs,
+    byCategory,
+  });
 
   return {
     totalCrawled: paperIds.length,

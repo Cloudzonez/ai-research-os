@@ -81,7 +81,7 @@ router.post("/generate", async (req, res) => {
           triage = await runAITriage(trackerData, crawl.newPaperIds, {
             PaperModel: Paper,
           });
-          debugLog.end("AI triage done", { paperCount: triage?.decisions?.length || 0 });
+          debugLog.end("AI triage done", { triaged: triage?.triaged, relevant: triage?.relevant, breakthroughs: triage?.breakthroughs });
         } catch (err) {
           debugLog.error("AI triage failed", { error: err.message });
           console.error("AI triage failed:", err.message);
@@ -196,7 +196,7 @@ router.post("/:id/crawl", async (req, res) => {
           triage = await runAITriage(trackerSpec, crawl.newPaperIds, {
             PaperModel: Paper,
           });
-          debugLog.end("AI triage done", { paperCount: triage?.decisions?.length || 0 });
+          debugLog.end("AI triage done", { triaged: triage?.triaged, relevant: triage?.relevant, breakthroughs: triage?.breakthroughs });
         } catch (err) {
           debugLog.error("AI triage failed", { error: err.message });
           console.error("AI triage failed:", err.message);
