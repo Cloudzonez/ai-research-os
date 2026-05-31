@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { LogIn, UserPlus, AlertCircle } from "lucide-react";
-import { api } from "../utils/api.js";
+import { useAuth } from "./AuthContext.jsx";
 
 export default function Login({ t, locale, onLogin }) {
+  const { login: authLogin, register: authRegister } = useAuth();
   const [mode, setMode] = useState("login"); // login | register
   const [email, setEmail] = useState("teacher@university.edu");
-  const [password, setPassword] = useState("password123");
-  const [name, setName] = useState("Test Teacher");
+  const [password, setPassword] = useState("demo123456");
+  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -27,11 +28,10 @@ export default function Login({ t, locale, onLogin }) {
     try {
       let result;
       if (mode === "register") {
-        result = await api.register(email, password, name);
+        result = await authRegister(email, password, name);
       } else {
-        result = await api.login(email, password);
+        result = await authLogin(email, password);
       }
-      localStorage.setItem("auth_token", result.token);
       onLogin(result.user, result.token);
     } catch (err) {
       setError(err.message || (isZh ? "认证失败" : "Authentication failed"));

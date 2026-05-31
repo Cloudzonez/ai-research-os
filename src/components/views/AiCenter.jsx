@@ -1,26 +1,67 @@
 import React, { useRef, useEffect, useState } from "react";
-import { ArrowUp, Bot, Layers3, Loader2, CheckCircle2, Wrench } from "lucide-react";
+import { ArrowUp, Bot, Layers3, Loader2, CheckCircle2, Wrench, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import MessageCard from "../MessageCard.jsx";
+import ChatHistory from "../ChatHistory.jsx";
 import quickPrompts from "../../data/quickPrompts.js";
 import { EmptyState, Skeleton } from "../LoadingStates.jsx";
 import { api } from "../../utils/api.js";
 
-export default function AiCenter({ t, locale, input, setInput, submit: parentSubmit, messages, setActiveView, papers, isLoading, addToast, setMessages, setTrackers, setCrawlers, setDraft }) {
+export default function AiCenter({ t, locale, input, setInput, submit: parentSubmit, messages, setActiveView, papers, isLoading, addToast, setMessages, setTrackers, setCrawlers, setDraft, activeSessionId, onNewChat, refreshSessionTitle, sessions, onSelectSession, onRenameSession, onDeleteSession, onToggleMarkSession, onToggleShareSession }) {
   const ref = useRef(null);
+  const textareaRef = useRef(null);
   const [streamingMsg, setStreamingMsg] = useState(null); // { text, steps[], kind }
   const [streamLoading, setStreamLoading] = useState(false);
 
   useEffect(() => { ref.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, streamingMsg]);
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); }
-  };
+  // Reset streaming state when session changes — ensures chat isolation
+  useEffect(() => {
+    setStreamingMsg(null);
+    setStreamLoading(false);
+  }, [activeSessionId]);
 
-  async function handleSubmit(event) {
+  // Auto-resize textarea as user types
+  function autoResizeTextarea() {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+  }
+  useEffect(() => { autoResizeTextarea(); }, [input]);
+
+  // Edit a user message and restart the conversation from that point
+  function handleEditAndResubmit(messageIndex, newText) {
+    // Keep only messages before the edited message (delete this message and everything after)
+    setMessages((prev) => prev.slice(0, messageIndex));
+    // Clear the input field
+    setInput("");
+    // Use a short delay to ensure state is updated, then submit the edited text directly
+    setTimeout(() => {
+      handleSubmitText(newText);
+    }, 50);
+  }
+
+  // Wrapper for form/keyboard submit — reads from input state
+  function handleSubmit(event) {
     if (event) event.preventDefault();
     const text = input.trim();
     if (!text) return;
     setInput("");
+    handleSubmitText(text);
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); }
+  };
+
+  // Guard against double-submit
+  const submittingRef = useRef(false);
+
+  // Core submit logic — can be called with explicit text (for edit+resubmit)
+  async function handleSubmitText(text) {
+    if (!text) return;
+    if (submittingRef.current) return; // Prevent double-submit
+    submittingRef.current = true;
     setStreamLoading(true);
 
     // Add user message immediately
@@ -30,10 +71,27 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
     // Initialize streaming state
     let streamText = "";
     const steps = [];
+    let doneHandled = false; // Guard against duplicate done events
     setStreamingMsg({ text: "", steps, kind: "general" });
 
+    // Helper: strip trailing JSON blobs and fix smart-quote spacing for display
+    function cleanStreamText(t) {
+      return t
+        .replace(/\s*\{"context"\s*:\s*\{[\s\S]*?\}\s*\}\s*$/, "")
+        .replace(/\s*\{"\w+"\s*:\s*[\[{][\s\S]{0,200}\}\s*$/, "")
+        .trim()
+        // Fix spaces around smart apostrophes: "I' ve" → "I've"
+        .replace(/(\w)\s+['\u2018\u2019]\s+(\w)/g, "$1'$2")
+        .replace(/(\w)\s+['\u2018\u2019](\w)/g, "$1'$2")
+        .replace(/(\w)['\u2018\u2019]\s+(\w)/g, "$1'$2")
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"');
+    }
+
     try {
-      const { stream } = api.submitMessageStream(text, locale);
+      // Use current session or fallback to "default" (avoid calling onNewChat which clears messages)
+      const sessionId = activeSessionId || "default";
+      const { stream } = api.submitMessageStream(text, locale, { sessionId });
 
       for await (const { event, data } of stream) {
         switch (event) {
@@ -44,21 +102,30 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
 
           case "token":
             streamText += data.token;
-            setStreamingMsg((s) => s ? { ...s, text: streamText } : null);
+            setStreamingMsg((s) => s ? { ...s, text: cleanStreamText(streamText) } : null);
             break;
 
           case "done": {
-            // Finalize message
+            if (doneHandled) break; // Prevent duplicate done processing
+            doneHandled = true;
+            // Finalize message — prefer server-cleaned text, fallback to cleaned streamText
+            const finalText = data.text || cleanStreamText(streamText);
             const finalMsg = {
               role: "assistant",
               kind: data.kind,
-              text: streamText,
+              text: finalText,
               createdAt: new Date().toISOString(),
               contextBundle: data.contextBundle,
               tokensUsed: data.tokensUsed,
+              searchedPapers: data.sideEffects?.searchedPapers || [],
             };
             setMessages((c) => [...c, finalMsg]);
             setStreamingMsg(null);
+
+            // Update session title if this was the first message
+            if (activeSessionId && refreshSessionTitle) {
+              refreshSessionTitle(activeSessionId, text);
+            }
 
             // Handle side effects
             if (data.sideEffects?.tracker) {
@@ -103,6 +170,7 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
       }]);
     } finally {
       setStreamLoading(false);
+      submittingRef.current = false;
     }
   }
 
@@ -121,16 +189,55 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
     }
   }
 
+  const [historyOpen, setHistoryOpen] = useState(true);
+
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)]">
-      <div className="flex-1 overflow-auto px-4 pt-6">
+    <div className="flex h-[calc(100vh-56px)]">
+      {/* ── Inner Chat History Panel ── */}
+      <div className={`shrink-0 transition-all duration-200 border-r border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-zinc-950/50 ${historyOpen ? "w-[220px]" : "w-0 overflow-hidden"}`}>
+        {historyOpen && (
+          <div className="p-2 h-full overflow-y-auto">
+            <ChatHistory
+              sessions={sessions || []}
+              activeSessionId={activeSessionId}
+              onSelectSession={onSelectSession}
+              onNewChat={onNewChat}
+              onRename={onRenameSession}
+              onDelete={onDeleteSession}
+              onToggleMark={onToggleMarkSession}
+              onToggleShare={onToggleShareSession}
+              locale={locale}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ── Main Chat Area ── */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Toggle button */}
+        <div className="flex items-center px-2 py-1 border-b border-gray-200 dark:border-white/5">
+          <button
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="p-1.5 rounded-lg text-muted hover:text-main hover:bg-gray-200/70 dark:hover:bg-white/5 transition-colors"
+            title={historyOpen ? (isZh ? "收起历史" : "Hide history") : (isZh ? "展开历史" : "Show history")}
+          >
+            {historyOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+          </button>
+          {activeSessionId && sessions?.length > 0 && (
+            <span className="ml-2 text-xs text-muted truncate">
+              {sessions.find((s) => s._id === activeSessionId)?.title || ""}
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-auto px-4 pt-6">
         <div className="mx-auto max-w-3xl">
           {messages.length === 0 && !streamingMsg && !streamLoading ? (
             <EmptyState icon={Bot} title={t.aiCenter} hint={t.emptyChat} />
           ) : (
             <div className="pb-4">
               {messages.map((msg, i) => (
-                <MessageCard key={`${msg.createdAt}-${i}`} message={msg} t={t} locale={locale} setActiveView={setActiveView} papers={papers} />
+                <MessageCard key={`${msg.createdAt}-${i}`} message={msg} t={t} locale={locale} setActiveView={setActiveView} papers={papers} addToast={addToast} messageIndex={i} onEditAndResubmit={!streamLoading ? handleEditAndResubmit : undefined} />
               ))}
 
               {/* Streaming message */}
@@ -208,7 +315,8 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
           </div>
           <div className="flex items-end gap-2">
             <textarea
-              className="input resize-none min-h-[52px] max-h-[120px]"
+              ref={textareaRef}
+              className="input resize-none min-h-[52px] max-h-[200px] overflow-hidden"
               value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
               placeholder={t.commandPlaceholder} disabled={streamLoading} rows={1}
             />
@@ -227,6 +335,7 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
           </p>
         </div>
       </div>
+      </div>{/* end Main Chat Area */}
     </div>
   );
 }

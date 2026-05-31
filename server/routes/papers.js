@@ -2,7 +2,7 @@ import { Router } from "express";
 import Paper from "../models/Paper.js";
 import { enqueue } from "../services/queue.js";
 import { searchArxiv } from "../services/ingestion/arxiv.js";
-import { searchOpenAlex } from "../services/ingestion/openalex.js";
+import { searchOpenAlex, searchOpenAlexSimple } from "../services/ingestion/openalex.js";
 import { downloadBatchPdfs } from "../services/pdfDownloader.js";
 import { authOptional } from "../middleware/auth.js";
 
@@ -33,6 +33,59 @@ async function findDuplicate(title, doi, text) {
 
   return null;
 }
+
+// GET /api/papers/search — Search OpenAlex without saving to DB
+router.get("/search", authOptional, async (req, res) => {
+  try {
+    const { q, page, sort, yearFrom, yearTo, perPage } = req.query;
+    if (!q) return res.status(400).json({ error: "Query parameter 'q' is required" });
+
+    const result = await searchOpenAlex(q, Number(perPage) || 15, {
+      page: Number(page) || 1,
+      sort: sort || "cited_by_count:desc",
+      yearFrom: yearFrom ? Number(yearFrom) : undefined,
+      yearTo: yearTo ? Number(yearTo) : undefined,
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error("Paper search error:", err);
+    res.status(500).json({ error: err.message || "Search failed" });
+  }
+});
+
+// POST /api/papers/save — Save an OpenAlex paper to library
+router.post("/save", authOptional, async (req, res) => {
+  try {
+    const { title, authors, abstract, doi, year, source, url, pdfUrl, citedByCount, type, journal } = req.body;
+    if (!title) return res.status(400).json({ error: "Title is required" });
+
+    // Check for duplicates
+    const dup = await findDuplicate(title, doi, null);
+    if (dup) return res.json({ paper: dup, duplicate: true });
+
+    const paper = await Paper.create({
+      title,
+      authors: authors || [],
+      abstract: abstract || "",
+      doi: doi || "",
+      year: year || new Date().getFullYear(),
+      source: source || "openalex",
+      url: url || "",
+      area: "OpenAlex",
+      score: citedByCount > 10 ? 85 : 70,
+      sharing: "school",
+      tags: ["OpenAlex", journal ? journal.slice(0, 30) : "Open access"],
+      status: "parsed",
+      itemType: type === "dataset" ? "repository" : "paper",
+    });
+
+    res.status(201).json({ paper });
+  } catch (err) {
+    console.error("Paper save error:", err);
+    res.status(500).json({ error: err.message || "Save failed" });
+  }
+});
 
 // GET all papers
 router.get("/", authOptional, async (req, res) => {
@@ -231,7 +284,7 @@ router.post("/ingest", authOptional, async (req, res) => {
 
     if (activeSources.includes("openalex")) {
       try {
-        const oaPapers = await searchOpenAlex(query, maxResults);
+        const { results: oaPapers } = await searchOpenAlex(query, maxResults);
         for (const op of oaPapers) {
           const dup = await findDuplicate(op.title, op.doi, null);
           if (dup) {

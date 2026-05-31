@@ -4,6 +4,7 @@ import { api } from "../utils/api.js";
 import { cn } from "../utils/cn.js";
 import ToastProvider, { useToast } from "./Toast.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
+import { AuthProvider, useAuth } from "./AuthContext.jsx";
 import Header from "./Header.jsx";
 import Navigation from "./Navigation.jsx";
 import ContextPanel from "./ContextPanel.jsx";
@@ -15,11 +16,24 @@ import WritingView from "./views/WritingView.jsx";
 import GovernanceView from "./views/GovernanceView.jsx";
 import FoundryView from "./views/FoundryView.jsx";
 import PaperDetailView from "./views/PaperDetailView.jsx";
+import ProfileView from "./views/ProfileView.jsx";
+import AdminDashboardView from "./views/AdminDashboardView.jsx";
 
-const VIEWS = { ai: AiCenter, trackers: TrackersView, library: LibraryView, writing: WritingView, governance: GovernanceView, foundry: FoundryView, paperDetail: PaperDetailView };
+const VIEWS = {
+  ai: AiCenter,
+  trackers: TrackersView,
+  library: LibraryView,
+  writing: WritingView,
+  governance: GovernanceView,
+  foundry: FoundryView,
+  paperDetail: PaperDetailView,
+  profile: ProfileView,
+  admin: AdminDashboardView,
+};
 
 function AppContent() {
   const { addToast } = useToast();
+  const { user, isAdmin, loading: authLoading, logout } = useAuth();
   const [isPending, startTransition] = useTransition();
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
   const [locale, setLocale] = useState(() => localStorage.getItem("locale") || "zh");
@@ -34,12 +48,10 @@ function AppContent() {
   const [crawlers, setCrawlers] = useState([]);
   const [health, setHealth] = useState(null);
   const [tokenUsage, setTokenUsage] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(null);
 
-  // Auth state
-  const [user, setUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
-
-  const [isLoading, setIsLoading] = useState({ app: true, messages: false, upload: false, draft: false });
+  const [isLoading, setIsLoading] = useState({ app: false, messages: false, upload: false, draft: false });
   const [errors, setErrors] = useState({ trackers: null, papers: null, writing: null, messages: null });
 
   const t = useMemo(() => copy[locale], [locale]);
@@ -52,53 +64,139 @@ function AppContent() {
 
   function toggleTheme() { setTheme((t) => (t === "light" ? "dark" : "light")); }
 
-  // Auth check on mount
-  useEffect(() => {
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      setAuthChecked(true);
-      setIsLoading((p) => ({ ...p, app: false }));
-      return;
-    }
-    api.getMe()
-      .then((data) => {
-        setUser(data.user);
-        setTokenUsage({
-          quota: data.user.quota || 1000000,
-          used: data.user.quotaUsed || 0,
-        });
-      })
-      .catch(() => localStorage.removeItem("auth_token"))
-      .finally(() => {
-        setAuthChecked(true);
-        setIsLoading((p) => ({ ...p, app: false }));
-      });
-  }, []);
-
   // Load data after auth
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
-        const [p, trks, cr, h] = await Promise.all([
-          api.fetchPapers(), api.fetchTrackers(), api.getCrawlers(), api.healthCheck(),
+        const [p, trks, cr, h, sess] = await Promise.all([
+          api.fetchPapers(), api.fetchTrackers(), api.getCrawlers(), api.healthCheck(), api.getSessions(),
         ]);
         setPapers(p);
         setTrackers(trks);
         setCrawlers(cr);
         setHealth(h);
-        // Load messages separately (may be empty for new users)
-        const msgs = await api.fetchInitialMessages();
-        if (msgs.length > 0) setMessages(msgs);
+        setSessions(sess);
+        // If there are sessions, load the most recent one; otherwise load legacy messages
+        if (sess.length > 0) {
+          const latest = sess[0];
+          setActiveSessionId(latest._id);
+          const { messages: msgs } = await api.getSessionMessages(latest._id);
+          setMessages(msgs);
+        } else {
+          const msgs = await api.fetchInitialMessages();
+          if (msgs.length > 0) setMessages(msgs);
+        }
       } catch (e) {
         setErrors((p) => ({ ...p, app: e.message }));
       }
     })();
   }, [user]);
 
+  // ── Session management ────────────────────────
+  async function handleNewChat() {
+    try {
+      const session = await api.createSession(locale === "zh" ? "新对话" : "New Chat");
+      setSessions((prev) => [session, ...prev]);
+      setActiveSessionId(session._id);
+      setMessages([]);
+      handleSetActiveView("ai");
+    } catch (e) {
+      addToast(locale === "zh" ? "创建对话失败" : "Failed to create chat", "error");
+    }
+  }
+
+  async function handleSelectSession(sessionId) {
+    try {
+      setMessages([]); // Clear messages immediately to avoid cross-session bleed
+      setActiveSessionId(sessionId);
+      handleSetActiveView("ai");
+      const { messages: msgs } = await api.getSessionMessages(sessionId);
+      setMessages(msgs);
+    } catch (e) {
+      addToast(locale === "zh" ? "加载对话失败" : "Failed to load chat", "error");
+    }
+  }
+
+  async function handleRenameSession(sessionId, title) {
+    try {
+      const updated = await api.renameSession(sessionId, title);
+      setSessions((prev) => prev.map((s) => s._id === sessionId ? updated : s));
+    } catch (e) {
+      addToast(locale === "zh" ? "重命名失败" : "Rename failed", "error");
+    }
+  }
+
+  async function handleDeleteSession(sessionId) {
+    try {
+      await api.deleteSession(sessionId);
+      setSessions((prev) => prev.filter((s) => s._id !== sessionId));
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(null);
+        setMessages([]);
+      }
+      addToast(locale === "zh" ? "对话已删除" : "Chat deleted", "success");
+    } catch (e) {
+      addToast(locale === "zh" ? "删除失败" : "Delete failed", "error");
+    }
+  }
+
+  async function handleToggleMarkSession(sessionId) {
+    try {
+      const updated = await api.toggleMarkSession(sessionId);
+      setSessions((prev) => prev.map((s) => s._id === sessionId ? updated : s));
+    } catch (e) {
+      addToast(locale === "zh" ? "操作失败" : "Operation failed", "error");
+    }
+  }
+
+  async function handleToggleShareSession(sessionId) {
+    try {
+      const updated = await api.toggleShareSession(sessionId);
+      setSessions((prev) => prev.map((s) => s._id === sessionId ? updated : s));
+      if (updated.isShared && updated.shareToken) {
+        const shareUrl = `${window.location.origin}/api/sessions/shared/${updated.shareToken}`;
+        try { await navigator.clipboard.writeText(shareUrl); } catch {}
+        addToast(locale === "zh" ? "分享链接已复制" : "Share link copied", "success");
+      } else {
+        addToast(locale === "zh" ? "已取消分享" : "Sharing disabled", "success");
+      }
+    } catch (e) {
+      addToast(locale === "zh" ? "操作失败" : "Operation failed", "error");
+    }
+  }
+
+  // Auto-rename session based on first user message
+  async function refreshSessionTitle(sessionId, firstMessageText) {
+    // Check if this session still has the default name
+    const session = sessions.find((s) => s._id === sessionId);
+    if (!session) return;
+    const isDefault = session.title === "New Chat" || session.title === "新对话";
+    const newTitle = firstMessageText.slice(0, 50) + (firstMessageText.length > 50 ? "..." : "");
+
+    // Update local state immediately
+    setSessions((prev) => prev.map((s) => {
+      if (s._id === sessionId && isDefault) {
+        return { ...s, title: newTitle, updatedAt: new Date().toISOString() };
+      }
+      if (s._id === sessionId) {
+        return { ...s, updatedAt: new Date().toISOString() };
+      }
+      return s;
+    }));
+
+    // Persist to backend if it was a default name
+    if (isDefault) {
+      try {
+        await api.renameSession(sessionId, newTitle);
+      } catch (e) {
+        console.warn("Failed to auto-rename session:", e);
+      }
+    }
+  }
+
   function handleLogin(userData, token) {
-    localStorage.setItem("auth_token", token);
-    setUser(userData);
+    // Login is handled by AuthContext now, but we still handle toast
     setTokenUsage({
       quota: userData.quota || 1000000,
       used: userData.quotaUsed || 0,
@@ -107,8 +205,7 @@ function AppContent() {
   }
 
   function handleLogout() {
-    localStorage.removeItem("auth_token");
-    setUser(null);
+    logout();
     setMessages([]);
     setPapers([]);
     setTrackers([]);
@@ -204,21 +301,32 @@ function AppContent() {
     finally { setLoading("draft", false); }
   }
 
+  // Guard admin-only views for teachers
+  function handleSetActiveView(viewId) {
+    const adminOnlyViews = ["governance", "foundry", "admin"];
+    if (adminOnlyViews.includes(viewId) && !isAdmin) {
+      addToast(locale === "zh" ? "此功能仅管理员可用" : "This feature is admin-only", "error");
+      return;
+    }
+    startTransition(() => setActiveView(viewId));
+  }
+
   useEffect(() => {
     const handler = (e) => {
       if (e.ctrlKey || e.metaKey) {
-        const map = { "1": "ai", "2": "trackers", "3": "library", "4": "writing", "5": "governance" };
-        if (map[e.key]) { e.preventDefault(); startTransition(() => setActiveView(map[e.key])); }
-        if (e.key === "6") { e.preventDefault(); startTransition(() => setActiveView("foundry")); }
+        const map = { "1": "ai", "2": "trackers", "3": "library", "4": "writing" };
+        if (map[e.key]) { e.preventDefault(); handleSetActiveView(map[e.key]); }
+        if (e.key === "5" && isAdmin) { e.preventDefault(); handleSetActiveView("governance"); }
+        if (e.key === "6" && isAdmin) { e.preventDefault(); handleSetActiveView("foundry"); }
         if (e.key === "k") { e.preventDefault(); document.querySelector("textarea")?.focus(); }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [startTransition]);
+  }, [startTransition, isAdmin]);
 
   // Loading state
-  if (isLoading.app) {
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white dark:bg-zinc-950">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
@@ -233,22 +341,30 @@ function AppContent() {
 
   const ActiveView = VIEWS[activeView] || VIEWS.ai;
   const vp = {
-    ai:          { t, locale, input, setInput, messages, setMessages, setTrackers, setCrawlers, setDraft, setActiveView, papers, addToast },
-    trackers:    { t, trackers, setTrackers, setInput, setActiveView, locale, isLoading: false, error: errors.trackers, addToast },
-    library:     { t, papers, onUpload: handleUpload, onSelectPaper: handleSelectPaper, isLoading: isLoading.upload, error: errors.papers },
+    ai:          { t, locale, input, setInput, messages, setMessages, setTrackers, setCrawlers, setDraft, setActiveView: handleSetActiveView, papers, addToast, activeSessionId, onNewChat: handleNewChat, refreshSessionTitle, sessions, onSelectSession: handleSelectSession, onRenameSession: handleRenameSession, onDeleteSession: handleDeleteSession, onToggleMarkSession: handleToggleMarkSession, onToggleShareSession: handleToggleShareSession },
+    trackers:    { t, trackers, setTrackers, setInput, setActiveView: handleSetActiveView, locale, isLoading: false, error: errors.trackers, addToast },
+    library:     { t, locale, papers, onUpload: handleUpload, onSelectPaper: handleSelectPaper, isLoading: isLoading.upload, error: errors.papers, addToast },
     writing:     { t, draft, setDraft, locale, onGenerateDraft: handleGenerateDraft, isLoading: isLoading.draft, error: errors.writing },
     governance:  { t, health, tokenUsage, crawlers },
     foundry:     { t, locale },
-    paperDetail: { t, paperId: selectedPaperId, setActiveView, locale, addToast },
+    paperDetail: { t, paperId: selectedPaperId, setActiveView: handleSetActiveView, locale, addToast },
+    profile:     { t, locale, addToast },
+    admin:       { t, locale, addToast, health },
   };
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <Header t={t} locale={locale} switchLocale={switchLocale} theme={theme} toggleTheme={toggleTheme} onToggleContext={() => setContextOpen((v) => !v)} user={user} onLogout={handleLogout} />
+      <Header
+        t={t} locale={locale} switchLocale={switchLocale}
+        theme={theme} toggleTheme={toggleTheme}
+        onToggleContext={() => setContextOpen((v) => !v)}
+        user={user} onLogout={handleLogout}
+        onNavigate={handleSetActiveView}
+      />
 
       <div className="flex h-[calc(100vh-56px)]">
         <aside className="shrink-0 w-[240px] border-r border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-zinc-950/50 overflow-auto">
-          <Navigation activeView={activeView} setActiveView={(v) => startTransition(() => setActiveView(v))} t={t} stats={stats} tokenUsage={tokenUsage} />
+          <Navigation activeView={activeView} setActiveView={handleSetActiveView} t={t} stats={stats} tokenUsage={tokenUsage} isAdmin={isAdmin} />
         </aside>
         <main className={cn("flex-1 min-w-0 overflow-auto transition-opacity duration-150", isPending && "opacity-60")}>
           <ErrorBoundary>
@@ -260,7 +376,7 @@ function AppContent() {
       <ContextPanel t={t} papers={papers} trackers={trackers} health={health} crawlers={crawlers} open={contextOpen} onClose={() => setContextOpen(false)} />
 
       <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/5 rounded-full px-3 py-1.5 text-[10px] text-muted shadow-lg">
-        <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-dull">Ctrl+1-6</kbd> views &middot;
+        <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-dull">Ctrl+1-{isAdmin ? "6" : "4"}</kbd> views &middot;
         <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-dull">Ctrl+K</kbd> chat &middot;
         v0.1.0
       </div>
@@ -268,6 +384,18 @@ function AppContent() {
   );
 }
 
+function AppWithAuth() {
+  const [tokenUsage, setTokenUsage] = useState(null);
+
+  return (
+    <AuthProvider onTokenUsageUpdate={setTokenUsage}>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </AuthProvider>
+  );
+}
+
 export default function App() {
-  return <ToastProvider><AppContent /></ToastProvider>;
+  return <AppWithAuth />;
 }

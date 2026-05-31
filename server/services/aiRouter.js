@@ -7,6 +7,43 @@ import { checkBudget, recordUsage } from "./tokenFlow.js";
 import { createApproval } from "../middleware/approval.js";
 import cache from "./cache.js";
 import { suggestStandardCrawlerSpec } from "./standardCrawler.js";
+import { searchOpenAlex } from "./ingestion/openalex.js";
+import { extractResearchIntent, mapSortToOpenAlex } from "./researchExtractor.js";
+
+// ─── Paper search intent detection ─────────────────────────────
+function isPaperSearchIntent(message) {
+  const m = message.toLowerCase();
+  const patterns = [
+    /\b(find|search|look\s*for|discover|get|show|list|recommend|need|want|give)\b.*\b(paper|article|publication|research|study|studies)\b/,
+    /\b(paper|article|publication|research)\b.*\b(about|on|related|regarding)\b/,
+    /\b(latest|recent|new|top)\b.*\b(paper|article|research|study)\b/,
+    /论文|文献|研究|查找.*论文|搜索.*论文|找.*论文|最新.*论文|相关.*论文|推荐.*论文|需要.*论文/,
+    /\b(literature|survey|review)\b.*\b(on|about|for)\b/,
+    // Broader: any mention of "paper(s)" or "research paper" in the message
+    /\b\w+\s+(research\s+)?paper(s)?\b/,
+    /\bresearch\b.*\b(paper|article|study)\b/,
+    // Topic + paper pattern: "trade paper", "AI paper", etc.
+    /\b\w+\s+paper\b/i,
+    // Very broad: if message contains "paper" at all
+    /\bpaper(s)?\b/,
+  ];
+  return patterns.some((p) => p.test(m));
+}
+
+function extractSearchKeywords(message, aiText) {
+  // Try to extract keywords from AI response first
+  const kwMatch = aiText?.match(/keywords?:\s*([^\n]+)/i);
+  if (kwMatch) {
+    return kwMatch[1].replace(/[,;，；]/g, " ").trim();
+  }
+  // Fallback: clean user message for search
+  return message
+    .replace(/[?？!！。，,.;；:：""''"\-\n]/g, " ")
+    .replace(/(find|search|look for|get|show|list|give me|help me|please|可以|帮我|查找|搜索|找|推荐|一些|相关|最新|论文|文献|研究|paper|papers|article|articles|research|about|on|related to)/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100) || message.slice(0, 60);
+}
 
 // ─── Tier-aware system prompt builders ─────────────────────────────
 
@@ -520,6 +557,63 @@ export async function routeChatStream(userMessage, locale, options = {}) {
       tool: "configure_standard_crawler",
       crawler: sideEffects.crawler,
     });
+  }
+
+  // Step 4b: AI-powered research intent extraction + OpenAlex search
+  // Uses DeepSeek to parse the user's natural language into structured research intent
+  if (onStep) onStep("tool_running", {
+    tool: "extract_research_intent",
+    message: locale === "zh" ? "正在分析研究意图..." : "Analyzing research intent...",
+  });
+
+  let researchIntent = null;
+  try {
+    researchIntent = await extractResearchIntent(userMessage, locale);
+  } catch (extractErr) {
+    console.error("Research intent extraction failed:", extractErr.message);
+  }
+
+  // Search OpenAlex if AI detected research intent, or kind is tracker, or legacy regex matches
+  const shouldSearch = researchIntent?.is_research || kind === "tracker" || isPaperSearchIntent(userMessage);
+
+  if (shouldSearch) {
+    if (onStep) onStep("tool_running", {
+      tool: "search_papers",
+      message: locale === "zh"
+        ? `正在搜索: ${researchIntent?.main_topic || userMessage.slice(0, 40)}...`
+        : `Searching: ${researchIntent?.main_topic || userMessage.slice(0, 40)}...`,
+    });
+
+    try {
+      // Use AI-extracted query if available, fallback to legacy keyword extraction
+      const searchQuery = researchIntent?.search_query || extractSearchKeywords(userMessage, text);
+      const maxResults = researchIntent?.max_results || 8;
+      const sortParam = researchIntent ? mapSortToOpenAlex(researchIntent.sort_by) : "cited_by_count:desc";
+
+      const searchOptions = { sort: sortParam };
+      if (researchIntent?.filters?.year_from) searchOptions.yearFrom = researchIntent.filters.year_from;
+      if (researchIntent?.filters?.year_to) searchOptions.yearTo = researchIntent.filters.year_to;
+
+      const { results: openAlexPapers } = await searchOpenAlex(searchQuery, maxResults, searchOptions);
+
+      sideEffects.searchedPapers = openAlexPapers;
+      sideEffects.researchIntent = researchIntent; // Pass to frontend for display
+
+      if (onStep) onStep("tool_complete", {
+        tool: "search_papers",
+        message: locale === "zh"
+          ? `找到 ${openAlexPapers.length} 篇相关论文 (${researchIntent?.main_topic || ""})`
+          : `Found ${openAlexPapers.length} papers on "${researchIntent?.main_topic || ""}"`,
+        paperCount: openAlexPapers.length,
+        researchIntent,
+      });
+    } catch (searchErr) {
+      console.error("OpenAlex search in chat failed:", searchErr.message);
+      if (onStep) onStep("tool_complete", {
+        tool: "search_papers",
+        message: locale === "zh" ? "论文搜索失败" : "Paper search failed",
+      });
+    }
   }
 
   // Step 5: Return final result

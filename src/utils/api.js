@@ -63,7 +63,7 @@ export const api = {
    * The stream is an async generator yielding { event, data } objects.
    * Events: step, token, done, error
    */
-  submitMessageStream(text, locale, paperId) {
+  submitMessageStream(text, locale, { paperId, sessionId } = {}) {
     const controller = new AbortController();
     const token = getToken();
 
@@ -74,7 +74,7 @@ export const api = {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ text, locale: locale || "zh", sessionId: "default", ...(paperId ? { paperId } : {}) }),
+        body: JSON.stringify({ text, locale: locale || "zh", sessionId: sessionId || "default", ...(paperId ? { paperId } : {}) }),
         signal: controller.signal,
       });
 
@@ -122,12 +122,71 @@ export const api = {
     };
   },
 
-  async fetchInitialMessages() {
-    const data = await request("/chat/messages?sessionId=default");
+  async fetchInitialMessages(sessionId) {
+    const sid = sessionId || "default";
+    const data = await request(`/chat/messages?sessionId=${sid}`);
     return data.messages || [];
   },
 
+  // ── Sessions (Chat History) ──────────────────
+  async getSessions() {
+    const data = await request("/sessions");
+    return data.sessions || [];
+  },
+
+  async createSession(title) {
+    const data = await request("/sessions", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    });
+    return data.session;
+  },
+
+  async renameSession(id, title) {
+    const data = await request(`/sessions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
+    return data.session;
+  },
+
+  async deleteSession(id) {
+    return request(`/sessions/${id}`, { method: "DELETE" });
+  },
+
+  async toggleMarkSession(id) {
+    const data = await request(`/sessions/${id}/mark`, { method: "PATCH" });
+    return data.session;
+  },
+
+  async toggleShareSession(id) {
+    const data = await request(`/sessions/${id}/share`, { method: "PATCH" });
+    return data.session;
+  },
+
+  async getSessionMessages(id) {
+    const data = await request(`/sessions/${id}/messages`);
+    return { messages: data.messages || [], session: data.session };
+  },
+
   // ── Papers ──────────────────────────────────
+  async searchPapers(query, options = {}) {
+    const params = new URLSearchParams({ q: query });
+    if (options.page) params.append("page", String(options.page));
+    if (options.sort) params.append("sort", options.sort);
+    if (options.perPage) params.append("perPage", String(options.perPage));
+    if (options.yearFrom) params.append("yearFrom", String(options.yearFrom));
+    if (options.yearTo) params.append("yearTo", String(options.yearTo));
+    return request(`/papers/search?${params.toString()}`);
+  },
+
+  async savePaper(paperData) {
+    return request("/papers/save", {
+      method: "POST",
+      body: JSON.stringify(paperData),
+    });
+  },
+
   async fetchPapers() {
     const data = await request("/papers");
     return data.papers || [];
@@ -243,6 +302,47 @@ export const api = {
   async getFoundryStats() {
     const data = await request("/foundry");
     return data.stats || {};
+  },
+
+  // ── Profile ──────────────────────────────────
+  async updateProfile(data) {
+    return request("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    return request("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
+
+  // ── Admin ────────────────────────────────────
+  async adminGetUsers() {
+    return request("/admin/users");
+  },
+
+  async adminGetUser(userId) {
+    return request(`/admin/users/${userId}`);
+  },
+
+  async adminUpdateUser(userId, data) {
+    return request(`/admin/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async adminDeleteUser(userId) {
+    return request(`/admin/users/${userId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async adminGetStats() {
+    return request("/admin/stats");
   },
 
   // ── Health ──────────────────────────────────
