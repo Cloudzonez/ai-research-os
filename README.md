@@ -246,20 +246,32 @@ ai-research-os/
 
 ## Recent Fixes & Improvements
 
-### Bug Fixes
+### Bug Fixes (2026-05-31)
 
-1. **Login page blank screen** (`src/components/Login.jsx`)
+1. **Invalid OpenAlex email configuration** (`server/config.js`)
+   - **Issue**: The default `openAlexEmail` value was set to `"JOpZgvOQfB8l1FW1SfBNZB"` which appears to be a token/ID rather than a valid email address. OpenAlex API requires a valid email for polite pool access.
+   - **Fix**: Changed default value to `"research@example.com"` - a valid email format that users should replace with their actual email in production.
+   - **Impact**: Prevents API errors when OPENALEX_EMAIL environment variable is not set.
+
+2. **TypeScript baseUrl deprecation warning** (`tsconfig.json`)
+   - **Issue**: TypeScript 6.0+ deprecated the `baseUrl` option without `ignoreDeprecations` flag, causing build warnings.
+   - **Fix**: Added `"ignoreDeprecations": "6.0"` to compilerOptions to silence the deprecation warning while maintaining path alias functionality.
+   - **Impact**: Cleaner build output, prepares for future TypeScript migration.
+
+### Previously Fixed Bugs
+
+3. **Login page blank screen** (`src/components/Login.jsx`)
    - **Issue**: The `Login` component used `useState` for form state (email, password, mode, etc.) but never imported it from React, causing a runtime crash and a blank white page.
    - **Fix**: Added `import { useState } from "react"` at the top of the file.
 
-2. **Duplicate chat messages** (`src/components/views/AiCenter.jsx`)
+4. **Duplicate chat messages** (`src/components/views/AiCenter.jsx`)
    - **Issue**: The same user query could produce two separate AI responses due to race conditions — when no session existed, `onNewChat()` was called which cleared messages mid-stream, and the submit function could be triggered multiple times.
-   - **Fix**: 
+   - **Fix**:
      - Added a `submittingRef` guard to prevent double-submit of `handleSubmitText`.
      - Added a `doneHandled` flag to prevent processing duplicate SSE `done` events.
      - Removed the `onNewChat()` call during message submission (falls back to `"default"` session instead).
 
-3. **Smart quote spacing in AI responses** (`src/components/MessageCard.jsx`, `src/components/views/AiCenter.jsx`)
+5. **Smart quote spacing in AI responses** (`src/components/MessageCard.jsx`, `src/components/views/AiCenter.jsx`)
    - **Issue**: The DeepSeek model returned Unicode smart quotes (`'` `'` `"` `"`) that got split across streaming tokens, causing visible spacing artifacts like `"you' d"`, `"I' ve"`, `"I' ll"`.
    - **Fix**: Added `cleanDisplayText()` and extended `cleanStreamText()` functions that normalize smart quotes to plain ASCII apostrophes/quotes and remove errant spaces around them.
 

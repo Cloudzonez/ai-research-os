@@ -19,5 +19,5 @@ export const config = {
   codeModel: process.env.CODE_MODEL || "deepseek-v4-pro",
   crawlerModel: process.env.CRAWLER_MODEL || process.env.CODE_MODEL || "deepseek-v4-pro",
   summaryModel: process.env.SUMMARY_MODEL || process.env.MODEL_NAME || "deepseek-v4-pro",
-  openAlexEmail: process.env.OPENALEX_EMAIL || "JOpZgvOQfB8l1FW1SfBNZB",
+  openAlexEmail: process.env.OPENALEX_EMAIL || "research@example.com",
 };
