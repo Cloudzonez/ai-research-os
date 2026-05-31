@@ -83,7 +83,7 @@ const paperSchema = new mongoose.Schema(
 
 paperSchema.index(
   { title: "text", abstract: "text" },
-  { default_language: "english", language_override: "_textLang" }
+  { default_language: "none" }
 );
 
 export default mongoose.model("Paper", paperSchema);
