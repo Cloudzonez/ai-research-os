@@ -65,15 +65,17 @@ server/                   # Express backend (ESM)
     htmlRenderer.js       # Server-side HTML generation for papers
     deepseek.js           # DeepSeek API client
     queue.js              # Job queue (MongoDB-backed)
-    rateLimiter.js        # Token bucket rate limiter (per-source)
-    retryHandler.js       # Exponential backoff + jitter retry
-    requestCache.js       # SHA-256 keyed LRU cache (per-source)
-    citationSnowball.js   # BFS forward/backward citation search via S2
-    ingestion/            # Source-specific API adapters (all wired with limiter+cache+retry)
-      arxiv.js            # arXiv API (direct API call, ~3s)
-      openalex.js         # OpenAlex API
-      semanticScholar.js  # Semantic Scholar API
-      github.js           # GitHub repository search
+    ingestion/            # Source-specific API adapters
+      arxiv.js, openalex.js, semanticScholar.js, github.js
+    paperSearch/          # Multi-source paper search pipeline
+      index.js            # Search orchestrator
+      BaseProvider.js     # Shared caching/retry/rate-limit base
+      providers/          # per-source search providers
+  prompts/                # Centralized LLM prompt templates (see prompts/CAPABILITIES.md)
+    chat.js, paperParser.js, paperSummarizer.js, aiTriage.js, htmlRenderer.js,
+    aiRouter.js, searchPlan.js, standardCrawler.js, paperAnalyzer.js,
+    contextEngine.js, appFactory.js, agentRunner.js,
+    writing.js, dashboards.js, foundry.js, trackers.js, worker.js, toolRegistry.js
   workers/runner.js       # Queue worker process
 
 tests/                    # Node.js test suite
@@ -152,12 +154,10 @@ The Vite dev server proxies `/api/*` to `localhost:3001`.
   sleep 1
   tmux send-keys -t dev "NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npm run dev:all 2>&1 | tee /tmp/dev-all.log" Enter
   ```
+  Convenience scripts: `./dev/start.sh`, `./dev/restart.sh`
   To view logs: `tmux capture-pane -t dev -p | tail -20`
-  If the session doesn't exist, create it:
-  ```bash
-  tmux new-session -d -s dev -c /home/philo/Documents/code/AI_Research \
-    "NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npm run dev:all 2>&1 | tee /tmp/dev-all.log"
-  ```
+  Auto-attach: on SSH, `cd` to any project dir auto-attaches to matching tmux sessions
+  via a `chpwd` hook in `~/.zshrc`.
 
 ## Architecture constraints
 
@@ -211,3 +211,6 @@ Never skip the test step. The test IS the specification.
 - When adding UI strings, add both `zh` and `en` entries in `src/i18n/index.js`.
 - Never delete or rename existing API endpoints without updating the frontend API client.
 - Commit messages in English, short, imperative mood.
+- When writing an LLM prompt, place it in `server/prompts/` and import it from there.
+  Read `server/prompts/CAPABILITIES.md` to keep prompts aligned with system capabilities.
+- Never use `kill <PID>` or `kill $(lsof -t -i:PORT)`. Restart dev via tmux Ctrl+C.
