@@ -15,6 +15,10 @@ export class SemanticScholarProvider extends BaseProvider {
   constructor(options = {}) {
     const apiKey = options.apiKey || config.semanticScholarApiKey || "";
     const hasKey = Boolean(apiKey);
+    const retryConfig = {
+      maxRetries: hasKey ? 3 : 0,  // No retry without API key — fall back to ingestion adapter
+      initialDelayMs: 1000,
+    };
     super({
       name: "semantic_scholar",
       baseUrl: "https://api.semanticscholar.org/graph/v1",
@@ -27,6 +31,7 @@ export class SemanticScholarProvider extends BaseProvider {
         ...(hasKey ? { "x-api-key": apiKey } : {}),
       },
       cacheTtlMs: options.cacheTtlMs ?? 300000,
+      retryConfig,
       ...options.overrides,
     });
     this.apiKey = apiKey;

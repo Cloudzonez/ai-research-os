@@ -121,6 +121,11 @@ function createCrawlContext(spec, options) {
     sources,
   };
   const query = buildSearchQuery(normalizedSpec);
+
+  // Log source adjustments
+  if (debugLog && hasChineseQuery(keywords) && spec.sources?.includes("arxiv")) {
+    debugLog.warn("arxiv_skipped_cjk", { message: "arXiv removed from sources — does not support Chinese queries", originalSources: spec.sources, adjustedSources: sources });
+  }
   const stats = {
     collected: 0,
     parsed: 0,
@@ -502,6 +507,10 @@ export function buildSearchQuery(spec) {
   if (keywords.length === 0 && spec.name) {
     keywords.push(...normalizeKeywords(null, spec.name));
   }
+  // Prefer multi-word keywords; never let individual word tokens pollute the query
+  // when the full phrase already exists
+  const multiWord = keywords.filter((k) => k.includes(" ")).slice(0, 4);
+  if (multiWord.length >= 2) return multiWord.join(" ");
   return keywords.slice(0, 4).join(" ");
 }
 
@@ -559,12 +568,14 @@ function normalizeSources(input, keywords = []) {
     .filter((source) => SUPPORTED_SOURCES.includes(source));
   let sources = [...new Set(normalized)].length ? [...new Set(normalized)] : DEFAULT_SOURCES;
 
-  // If query contains Chinese text and arxiv is the only source, arxiv will return 0 results.
-  // Auto-add openalex + crossref which support Chinese-language queries.
+  // arXiv doesn't support Chinese queries — silently skip it and add alternatives
   const queryText = keywords.join(" ") || "";
   const hasChinese = /[\u4e00-\u9fff]/.test(queryText);
-  if (hasChinese && sources.every(s => s === "arxiv" || s === "semantic_scholar")) {
-    sources = [...sources, "openalex", "crossref"];
+  if (hasChinese) {
+    sources = sources.filter((s) => s !== "arxiv");
+    // Ensure we have at least openalex and crossref which handle Chinese well
+    if (!sources.includes("openalex")) sources.push("openalex");
+    if (!sources.includes("crossref")) sources.push("crossref");
   }
 
   return sources;
@@ -712,6 +723,10 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function hasChineseQuery(keywords) {
+  return /[\u4e00-\u9fff]/.test((keywords || []).join(" "));
+}
+
 function defaultSearchers(searchService = getSearchService(), debugLog) {
   return {
     arxiv: createPaperSearchAdapter("arxiv", searchService, { fallback: crawlArxiv, debugLog }),
@@ -736,6 +751,7 @@ function createPaperSearchAdapter(source, searchService, options = {}) {
         providers: [source],
         deduplicate: false,
         enrich: false,
+        timeoutPerProvider: 6000,
       });
       const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
 
