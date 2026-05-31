@@ -142,18 +142,20 @@ The Vite dev server proxies `/api/*` to `localhost:3001`.
   file /tmp/mongodb-27017.sock", run `sudo rm -f /tmp/mongodb-27017.sock` first.
 - **Sudo password** is `patrick` when needed for system-level operations.
 - **VS Code Remote SSH.** This machine is accessed via VS Code Remote SSH. NEVER use
-  `pkill` or `kill $(lsof -t -i:PORT)` to free ports — this can kill the VS Code
-  server. To restart local dev servers safely, use:
+  `pkill`, `killall`, `fuser -k`, or `kill $(lsof -t -i:PORT)` to free ports —
+  this can kill the VS Code server, SSH session, or other critical processes.
+  The approved restart procedure uses the dedicated `dev` tmux session:
   ```bash
-  # Find only the specific PIDs
-  lsof -i:3001 -t  # backend PID
-  lsof -i:5173 -t  # frontend PID
-  kill <PID> <PID>  # kill only those two
+  # 1. Find only the PIDs belonging to the dev server in the tmux session
+  DEV_PIDS=$(tmux capture-pane -t dev -p -S -20 | grep -oP '(?<=node-Main\s)\d+' | sort -u)
+  # 2. Kill only those PIDs
+  kill $DEV_PIDS 2>/dev/null
+  # 3. Recreate the tmux session with dev:all
+  tmux kill-session -t dev 2>/dev/null
+  tmux new-session -d -s dev -c /home/philo/Documents/code/AI_Research \
+    "NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npm run dev:all 2>&1 | tee /tmp/dev-all.log"
   ```
-  Then restart in background so the process outlives the bash tool timeout:
-  ```bash
-  NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost nohup npm run dev:all > /tmp/devserver.log 2>&1 &
-  ```
+  To view logs: `tmux capture-pane -t dev -p | tail -20`
 
 ## Architecture constraints
 
