@@ -421,22 +421,30 @@ async function enrichPdfUrlsViaDoiLookup(crawledPapers, parsedItems, context) {
   if (!toEnrich.length) return;
   if (debugLog) debugLog.begin(`DOI → arXiv lookup — ${toEnrich.length} papers lacking pdfUrl`);
 
+  // Cap lookups to avoid excessive arXiv API calls
+  const MAX_LOOKUPS = 10;
   let resolved = 0;
+  let skipped = 0;
   for (const { paper, parsed, doi } of toEnrich) {
+    if (resolved + skipped >= MAX_LOOKUPS) {
+      if (debugLog) debugLog.detail(`DOI lookup limit reached (${MAX_LOOKUPS}), skipping remaining`, { remaining: toEnrich.length - resolved - skipped });
+      break;
+    }
     try {
       const resolvedPdf = await resolveArxivPdfFromDoi(doi);
       if (resolvedPdf) {
-        // Set pdfUrl on the parsed item so collectPdfDownloadItems picks it up
         if (parsed) parsed.pdfUrl = resolvedPdf.pdfUrl;
         resolved += 1;
         if (debugLog) debugLog.detail(`DOI resolved to arXiv PDF`, { doi: doi.slice(0, 40), arxivId: resolvedPdf.arxivId, title: paper.title?.slice(0, 50) });
+      } else {
+        skipped += 1;
       }
     } catch {
-      // Non-fatal — continue with next paper
+      skipped += 1;
     }
   }
 
-  if (debugLog) debugLog.end(`DOI → arXiv lookup done`, { candidates: toEnrich.length, resolved });
+  if (debugLog) debugLog.end(`DOI → arXiv lookup done`, { candidates: toEnrich.length, lookedUp: resolved + skipped, resolved, skipped });
 }
 
 function collectPdfDownloadItems(crawledPapers, parsedItems) {

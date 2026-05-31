@@ -136,6 +136,15 @@ export async function resolveArxivPdfFromDoi(doi) {
   const clean = String(doi).replace(/^https?:\/\/doi\.org\//i, "").trim();
   if (!clean.startsWith("10.")) return null;
 
+  // Only attempt DOIs that could plausibly be on arXiv
+  // Skip non-arXiv patterns to avoid wasting API calls
+  if (/^10\.48550\//.test(clean)) {
+    // Explicit arXiv DOI — always try
+  } else if (!/arxiv/i.test(clean)) {
+    // Not an arXiv DOI — skip to avoid 400 errors and rate limiting
+    return null;
+  }
+
   try {
     const xml = await fetchArxivApi(`doi:${clean}`, 1);
     const results = parseAtomResponse(xml);
