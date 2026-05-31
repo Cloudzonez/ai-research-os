@@ -54,7 +54,7 @@ async function fetchArxivApi(query, maxResults = 10) {
     sortOrder: "descending",
   });
 
-  const url = `http://export.arxiv.org/api/query?${params.toString()}`;
+  const url = `https://export.arxiv.org/api/query?${params.toString()}`;
   const debugLog = getActiveDebugLog();
   const t0 = Date.now();
 

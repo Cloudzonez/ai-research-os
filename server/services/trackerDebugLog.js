@@ -5,18 +5,6 @@ import { randomUUID } from "node:crypto";
 const LOGS_DIR = path.resolve("logs");
 const colors = { blue: "\x1b[34m", green: "\x1b[32m", yellow: "\x1b[33m", red: "\x1b[31m", cyan: "\x1b[36m", reset: "\x1b[0m" };
 
-export function setActiveDebugLog(log) {
-  globalThis._trackerDebugLog = log;
-}
-
-export function getActiveDebugLog() {
-  return globalThis._trackerDebugLog || null;
-}
-
-export function clearActiveDebugLog() {
-  globalThis._trackerDebugLog = null;
-}
-
 export function createTrackerDebugLog() {
   const runId = randomUUID().slice(0, 8);
   const startedAt = new Date();
@@ -139,3 +127,8 @@ export function createTrackerDebugLog() {
     },
   };
 }
+
+/** Kept for backward compatibility — removed global state */
+export function setActiveDebugLog() {}
+export function getActiveDebugLog() { return null; }
+export function clearActiveDebugLog() {}

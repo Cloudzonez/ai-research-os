@@ -8,7 +8,7 @@ import { sharingLabel } from "../../utils/sharingLabel.js";
 import PaperChat from "../PaperChat.jsx";
 import { ErrorDisplay, Skeleton } from "../LoadingStates.jsx";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 function getPdfUrl(paper) {
   if (paper.pdfPath) return `/uploads/${paper.pdfPath.split("/").pop()}`;

@@ -128,9 +128,15 @@ export const api = {
   },
 
   // ── Papers ──────────────────────────────────
-  async fetchPapers() {
-    const data = await request("/papers");
-    return data.papers || [];
+  async fetchPapers(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.page) qs.set("page", params.page);
+    if (params.limit) qs.set("limit", params.limit);
+    if (params.sort) qs.set("sort", params.sort);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    const data = await request(`/papers${suffix}`);
+    return { papers: data.papers || [], pagination: data.pagination };
   },
 
   async fetchPaper(paperId) {
@@ -138,19 +144,62 @@ export const api = {
     return data.paper || data;
   },
 
-  async uploadPapers(filesOrFilenames, locale) {
+  async updatePaper(paperId, body) {
+    const data = await request(`/papers/${paperId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    return data.paper || data;
+  },
+
+  async deletePaper(paperId) {
+    return request(`/papers/${paperId}`, { method: "DELETE" });
+  },
+
+  async uploadPapers(filesOrFilenames, locale, onProgress) {
     const items = Array.from(filesOrFilenames || []);
     const first = items[0];
     const isFileUpload = typeof File !== "undefined" && first instanceof File;
-    const body = isFileUpload
-      ? {
-          files: await Promise.all(items.map(async (file) => ({
-            name: file.name,
-            data: await fileToBase64(file),
-          }))),
-          locale: locale || "zh",
-        }
-      : { filenames: items, locale: locale || "zh" };
+
+    if (!isFileUpload) {
+      const body = { filenames: items, locale: locale || "zh" };
+      const data = await request("/papers/upload", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return data.papers || [];
+    }
+
+    // File upload with optional progress
+    const body = {
+      files: await Promise.all(items.map(async (file) => ({
+        name: file.name,
+        data: await fileToBase64(file),
+      }))),
+      locale: locale || "zh",
+    };
+
+    if (onProgress) {
+      const token = getToken();
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const xhr = new XMLHttpRequest();
+      return new Promise((resolve, reject) => {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) onProgress(e.loaded / e.total);
+        });
+        xhr.addEventListener("load", () => {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data.papers || []);
+          } catch { reject(new Error("Invalid response")); }
+        });
+        xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+        xhr.open("POST", apiUrl("/papers/upload"));
+        for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+        xhr.send(JSON.stringify(body));
+      });
+    }
 
     const data = await request("/papers/upload", {
       method: "POST",
@@ -194,9 +243,14 @@ export const api = {
   },
 
   // ── Trackers ────────────────────────────────
-  async fetchTrackers() {
-    const data = await request("/trackers");
-    return data.trackers || [];
+  async fetchTrackers(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.page) qs.set("page", params.page);
+    if (params.limit) qs.set("limit", params.limit);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    const data = await request(`/trackers${suffix}`);
+    return { trackers: data.trackers || [], pagination: data.pagination };
   },
 
   async fetchTrackerDetail(trackerId) {
@@ -207,6 +261,13 @@ export const api = {
     return request("/trackers/generate", {
       method: "POST",
       body: JSON.stringify({ topic, locale: locale || "zh" }),
+    });
+  },
+
+  async updateTracker(trackerId, body) {
+    return request(`/trackers/${trackerId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
     });
   },
 

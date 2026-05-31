@@ -40,7 +40,7 @@ function AppContent() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
-  const [isLoading, setIsLoading] = useState({ app: true, messages: false, upload: false, draft: false });
+  const [isLoading, setIsLoading] = useState({ app: true, messages: false, upload: false, draft: false, trackers: false });
   const [errors, setErrors] = useState({ trackers: null, papers: null, writing: null, messages: null });
 
   const t = useMemo(() => copy[locale], [locale]);
@@ -81,11 +81,11 @@ function AppContent() {
     if (!user) return;
     (async () => {
       try {
-        const [p, trks, dbs, h] = await Promise.all([
+        const [pRes, trRes, dbs, h] = await Promise.all([
           api.fetchPapers(), api.fetchTrackers(), api.fetchDashboards(), api.healthCheck(),
         ]);
-        setPapers(p);
-        setTrackers(trks);
+        setPapers(pRes.papers);
+        setTrackers(trRes.trackers);
         setDashboards(dbs);
         setHealth(h);
         // Load messages separately (may be empty for new users)
@@ -96,6 +96,19 @@ function AppContent() {
       }
     })();
   }, [user]);
+
+  async function refreshTrackers() {
+    setIsLoading((p) => ({ ...p, trackers: true }));
+    try {
+      const res = await api.fetchTrackers();
+      setTrackers(res.trackers);
+      setErrors((p) => ({ ...p, trackers: null }));
+    } catch (e) {
+      setErrors((p) => ({ ...p, trackers: e.message }));
+    } finally {
+      setIsLoading((p) => ({ ...p, trackers: false }));
+    }
+  }
 
   function handleLogin(userData, token) {
     localStorage.setItem("auth_token", token);
@@ -195,6 +208,13 @@ function AppContent() {
     finally { setLoading("upload", false); }
   }
 
+  async function refreshPapers() {
+    try {
+      const res = await api.fetchPapers();
+      setPapers(res.papers);
+    } catch { /* ignore */ }
+  }
+
   async function handleGenerateDraft() {
     setLoading("draft", true);
     try {
@@ -235,8 +255,8 @@ function AppContent() {
   const ActiveView = VIEWS[activeView] || VIEWS.ai;
   const vp = {
     ai:          { t, locale, input, setInput, messages, setMessages, setTrackers, setDraft, setActiveView, papers, addToast },
-    trackers:    { t, trackers, setTrackers, setInput, setActiveView, locale, isLoading: false, error: errors.trackers, addToast },
-    library:     { t, papers, onUpload: handleUpload, onSelectPaper: handleSelectPaper, isLoading: isLoading.upload, error: errors.papers },
+    trackers:    { t, user, trackers, setTrackers, setInput, setActiveView, locale, isLoading: isLoading.trackers, error: errors.trackers, addToast, refreshTrackers },
+    library:     { t, user, papers, onUpload: handleUpload, onSelectPaper: handleSelectPaper, isLoading: isLoading.upload, error: errors.papers, refreshPapers },
     writing:     { t, draft, setDraft, locale, onGenerateDraft: handleGenerateDraft, isLoading: isLoading.draft, error: errors.writing },
     governance:  { t, health, tokenUsage, user },
     dashboards:  { t, locale, dashboards, setDashboards, addToast },

@@ -4,7 +4,7 @@ import { enqueue } from "../services/queue.js";
 import { crawlArxiv } from "../services/ingestion/arxiv.js";
 import { searchOpenAlex } from "../services/ingestion/openalex.js";
 import { downloadBatchPdfs } from "../services/pdfDownloader.js";
-import { authOptional } from "../middleware/auth.js";
+import { authOptional, authRequired } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -35,11 +35,66 @@ async function findDuplicate(title, doi, text) {
   return null;
 }
 
-// GET all papers
+// GET papers — paginated, searchable, sortable, sharing-aware
 router.get("/", authOptional, async (req, res) => {
   try {
-    const papers = await Paper.find().sort({ createdAt: -1 }).lean();
-    res.json({ papers });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+    const sort = req.query.sort || "createdAt";
+    const q = (req.query.q || "").trim();
+
+    // Build sharing-aware filter
+    const filter = {};
+    if (req.user) {
+      // Authenticated: see own private + same-school school + all university
+      const schoolMatch = req.user.schoolId ? { schoolId: req.user.schoolId } : { schoolId: null };
+      filter.$or = [
+        { sharing: "university" },
+        { sharing: "school", ...schoolMatch },
+        { sharing: "project", ...schoolMatch },
+        { sharing: "private", userId: req.user._id },
+      ];
+    } else {
+      // Anonymous: only university-shared papers
+      filter.sharing = "university";
+    }
+
+    // Text search
+    let query;
+    if (q) {
+      query = Paper.find(filter, { score: { $meta: "textScore" } });
+    } else {
+      query = Paper.find(filter);
+    }
+
+    // Sort
+    const sortOpts = {};
+    if (q && sort === "relevance") {
+      sortOpts.score = { $meta: "textScore" };
+    } else if (sort === "year") {
+      sortOpts.year = -1;
+    } else if (sort === "score") {
+      sortOpts.score = -1;
+    } else {
+      sortOpts.createdAt = -1;
+    }
+
+    const [papers, total] = await Promise.all([
+      query.sort(sortOpts).skip(skip).limit(limit).lean(),
+      Paper.countDocuments(filter),
+    ]);
+
+    res.json({
+      papers,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: skip + papers.length < total,
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -48,7 +103,11 @@ router.get("/", authOptional, async (req, res) => {
 // POST create paper
 router.post("/", authOptional, async (req, res) => {
   try {
-    const paper = await Paper.create(req.body);
+    const paper = await Paper.create({
+      ...req.body,
+      userId: req.user?._id || null,
+      schoolId: req.user?.schoolId || null,
+    });
     res.status(201).json({ paper });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -67,19 +126,29 @@ router.get("/:id", async (req, res) => {
 });
 
 // PUT update paper
-router.put("/:id", async (req, res) => {
+router.put("/:id", authRequired, async (req, res) => {
   try {
-    const paper = await Paper.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!paper) return res.status(404).json({ error: "Not found" });
-    res.json({ paper });
+    const existing = await Paper.findById(req.params.id);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    if (existing.userId && existing.userId.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+    Object.assign(existing, req.body);
+    await existing.save();
+    res.json({ paper: existing });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // DELETE paper
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authRequired, async (req, res) => {
   try {
+    const existing = await Paper.findById(req.params.id);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    if (existing.userId && existing.userId.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+      return res.status(403).json({ error: "Not authorized" });
+    }
     await Paper.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (err) {
@@ -94,9 +163,14 @@ router.post("/upload", authOptional, async (req, res) => {
 
     // Handle filename-only uploads (frontend compat)
     if (filenames && Array.isArray(filenames)) {
+      const base = {
+        userId: req.user?._id || null,
+        schoolId: req.user?.schoolId || null,
+      };
       const papers = await Promise.all(
         filenames.map((name) =>
           Paper.create({
+            ...base,
             title: name.replace(/\.pdf$/i, ""),
             source: "PDF",
             area: locale === "zh" ? "教师上传" : "Teacher upload",
@@ -144,6 +218,8 @@ router.post("/upload", authOptional, async (req, res) => {
 
         // Create paper record
         const paper = await Paper.create({
+          userId: req.user?._id || null,
+          schoolId: req.user?.schoolId || null,
           title: name.replace(/\.pdf$/i, ""),
           source: "PDF",
           area: locale === "zh" ? "教师上传" : "Teacher upload",
@@ -291,6 +367,11 @@ router.post("/ingest", authOptional, async (req, res) => {
 
     const pdfDownloads = [];
 
+    const ingestBase = {
+      userId: req.user?._id || null,
+      schoolId: req.user?.schoolId || null,
+    };
+
     if (activeSources.includes("arxiv")) {
       try {
         const arxivPapers = await crawlArxiv(query, { maxResults, dedup: false });
@@ -301,6 +382,7 @@ router.post("/ingest", authOptional, async (req, res) => {
             continue;
           }
           const paper = await Paper.create({
+            ...ingestBase,
             title: ap.title,
             authors: ap.authors,
             abstract: ap.abstract,
@@ -310,8 +392,8 @@ router.post("/ingest", authOptional, async (req, res) => {
             area: query,
             score: 75,
             sharing: "school",
-            tags: ["arXiv", locale === "zh" ? "开放获取" : "Open access"],
-            status: "parsed",
+
+            // queue pdf download
           });
           ingested.push(paper);
           if (ap.pdfUrl) pdfDownloads.push({ paper, pdfUrl: ap.pdfUrl });
@@ -335,6 +417,7 @@ router.post("/ingest", authOptional, async (req, res) => {
             continue;
           }
           const paper = await Paper.create({
+            ...ingestBase,
             title: op.title,
             authors: op.authors,
             abstract: op.abstract,

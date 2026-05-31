@@ -1,4 +1,23 @@
+import { getRateLimiter } from "../rateLimiter.js";
+import { retryWithBackoff } from "../retryHandler.js";
+import { getRequestCache } from "../requestCache.js";
+import { getActiveDebugLog } from "../trackerDebugLog.js";
+
+const limiter = getRateLimiter("github", 1);
+const cache = getRequestCache("github", { maxSize: 200, ttlMs: 600000 });
+
 export async function searchGitHubRepositories(query, maxResults = 10, options = {}) {
+  const debugLog = getActiveDebugLog();
+  const cacheKey = cache.generateKey("github", query, { maxResults, sort: options.sort });
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    if (debugLog) debugLog.detail("[ingestion/github] cache HIT", { query: query.slice(0, 60), count: cached.length });
+    return cached;
+  }
+
+  if (debugLog) debugLog.begin("[ingestion/github] API call", { query: query.slice(0, 80), maxResults });
+  await limiter.waitForPermission();
+
   const baseUrl = "https://api.github.com/search/repositories";
   const params = new URLSearchParams({
     q: query,
@@ -15,16 +34,25 @@ export async function searchGitHubRepositories(query, maxResults = 10, options =
   const token = options.token || process.env.GITHUB_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${baseUrl}?${params.toString()}`, {
-    headers,
-    signal: AbortSignal.timeout(options.timeoutMs || 15000),
-  });
-  if (!res.ok) {
-    throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
-  }
+  const t0 = Date.now();
 
-  const data = await res.json();
-  return (data.items || []).map((repo) => ({
+  const data = await retryWithBackoff(
+    async () => {
+      const res = await fetch(`${baseUrl}?${params.toString()}`, {
+        headers,
+        signal: AbortSignal.timeout(options.timeoutMs || 15000),
+      });
+      if (!res.ok) {
+        if (debugLog) debugLog.error("[ingestion/github] HTTP failed", { status: res.status, statusText: res.statusText });
+        throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
+      }
+      return res.json();
+    },
+    { context: "GitHub API", maxRetries: 2, initialDelayMs: 3000 }
+  );
+
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+  const results = (data.items || []).map((repo) => ({
     title: repo.full_name || repo.name || "",
     authors: repo.owner?.login ? [repo.owner.login] : [],
     abstract: repo.description || "",
@@ -38,6 +66,10 @@ export async function searchGitHubRepositories(query, maxResults = 10, options =
     updatedAt: repo.updated_at || "",
     itemType: "repository",
   }));
+
+  if (debugLog) debugLog.end("[ingestion/github] done", { resultCount: results.length, elapsedSec: elapsed });
+  cache.set(cacheKey, results);
+  return results;
 }
 
 export default { searchGitHubRepositories };

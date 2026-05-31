@@ -1,4 +1,6 @@
 import Tracker from "../models/Tracker.js";
+import Paper from "../models/Paper.js";
+import { runAITriage } from "./aiTriage.js";
 
 const SCHEDULER_INTERVAL = 5 * 60 * 1000;
 const CADENCE_MS = {
@@ -44,7 +46,16 @@ async function tick(logger) {
           lastRun: tracker.lastRun,
         });
 
-        await Tracker.findByIdAndUpdate(tracker._id, { crawlStatus: "running" });
+        // Atomic guard: only start if currently idle/failed/completed/partial
+        const locked = await Tracker.findOneAndUpdate(
+          { _id: tracker._id, crawlStatus: { $in: ["idle", "completed", "partial", "failed"] } },
+          { crawlStatus: "running" },
+          { new: true }
+        );
+        if (!locked) {
+          logger.info("Scheduler: tracker already running, skipping", { trackerId: String(tracker._id), name: tracker.name });
+          continue;
+        }
 
         try {
           const { crawlTrackerSpec } = await import("./trackerCrawl.js");
@@ -63,6 +74,15 @@ async function tick(logger) {
           const crawlStatus = crawl.errors.length && crawl.paperCount === 0
             ? "failed"
             : crawl.errors.length ? "partial" : "completed";
+
+          // Run AI triage on newly crawled papers
+          if (crawl.newPaperIds && crawl.newPaperIds.length > 0) {
+            try {
+              await runAITriage(trackerSpec, crawl.newPaperIds, { PaperModel: Paper });
+            } catch (triageErr) {
+              logger.error("Scheduler: triage failed", { error: triageErr.message });
+            }
+          }
 
           await Tracker.findByIdAndUpdate(tracker._id, {
             papers: crawl.paperCount,

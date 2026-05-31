@@ -19,6 +19,8 @@ const paperSchema = new mongoose.Schema(
       enum: ["private", "project", "school", "university"],
       default: "school",
     },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    schoolId: { type: mongoose.Schema.Types.ObjectId, ref: "School", default: null },
     tags: [{ type: String }],
     doi: String,
     abstract: String,

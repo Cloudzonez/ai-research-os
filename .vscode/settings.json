@@ -1,5 +1,5 @@
 {
-  "chat.disableAIFeatures": true,
+  "chat.disableAIFeatures": false,
   "chat.commandCenter.enabled": false,
   "workbench.settings.showAISearchToggle": false,
   "search.searchView.semanticSearchBehavior": "manual",

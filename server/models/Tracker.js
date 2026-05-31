@@ -11,6 +11,8 @@ const trackerSchema = new mongoose.Schema(
     papers: { type: Number, default: 0 },
     sources: [{ type: String }],
     signals: [{ type: String }],
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    schoolId: { type: mongoose.Schema.Types.ObjectId, ref: "School", default: null },
     subscribers: { type: Number, default: 1 },
     lastRun: { type: Date, default: Date.now },
     keywords: [String],
