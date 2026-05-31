@@ -238,7 +238,7 @@ function AppContent() {
     trackers:    { t, trackers, setTrackers, setInput, setActiveView, locale, isLoading: false, error: errors.trackers, addToast },
     library:     { t, papers, onUpload: handleUpload, onSelectPaper: handleSelectPaper, isLoading: isLoading.upload, error: errors.papers },
     writing:     { t, draft, setDraft, locale, onGenerateDraft: handleGenerateDraft, isLoading: isLoading.draft, error: errors.writing },
-    governance:  { t, health, tokenUsage },
+    governance:  { t, health, tokenUsage, user },
     dashboards:  { t, locale, dashboards, setDashboards, addToast },
     foundry:     { t, locale },
     paperDetail: { t, paperId: selectedPaperId, setActiveView, locale, addToast },

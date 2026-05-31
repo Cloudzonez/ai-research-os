@@ -252,6 +252,21 @@ export const api = {
     return request(`/dashboards/${id}`, { method: "DELETE" });
   },
 
+  // ── Approvals ────────────────────────────────
+  async fetchApprovals(status) {
+    const params = status ? `?status=${status}` : "";
+    const data = await request(`/approvals${params}`);
+    return data.actions || [];
+  },
+
+  async approveAction(actionId) {
+    return request(`/approvals/${actionId}/approve`, { method: "POST" });
+  },
+
+  async denyAction(actionId) {
+    return request(`/approvals/${actionId}/deny`, { method: "POST" });
+  },
+
   // ── Dev Logs ─────────────────────────────────
   async fetchLogs(filters = {}) {
     const params = new URLSearchParams();

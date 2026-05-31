@@ -108,6 +108,23 @@ router.post("/scripts/generate", authRequired, async (req, res) => {
   }
 });
 
+// POST run arbitrary code in sandbox (Governance UI)
+router.post("/scripts/run-sandbox", authRequired, async (req, res) => {
+  try {
+    const { code, language } = req.body;
+    if (!code) return res.status(400).json({ error: "Code required" });
+
+    const result = await runInSandbox(code, {
+      language: language || "javascript",
+      timeout: 30000,
+    });
+
+    res.json({ result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/scripts/:id/run", authRequired, async (req, res) => {
   try {
     const script = await GeneratedScript.findById(req.params.id);
