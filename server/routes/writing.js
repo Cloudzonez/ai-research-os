@@ -2,10 +2,11 @@ import { Router } from "express";
 import { chat, parseResponse } from "../services/deepseek.js";
 import AIAction from "../models/AIAction.js";
 import { buildWritingPrompt } from "../prompts/writing.js";
+import { authOptional } from "../middleware/auth.js";
 
 const router = Router();
 
-router.post("/generate", async (req, res) => {
+router.post("/generate", authOptional, async (req, res) => {
   try {
     const { locale, topic } = req.body;
     const l = locale || "zh";

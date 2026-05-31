@@ -23,6 +23,8 @@
     "test:middleware": "node --test tests/auth-middleware.test.js",
     "test:worker": "node --test tests/worker-runner.test.js",
     "test:routes": "node --test tests/routes/*.test.js",
+    "seed": "node scripts/seed.js",
+    "seed:clear": "node scripts/seed.js --clear",
     "test:backend": "node --test tests/deepseek-parse.test.js tests/model-mesh.test.js tests/sandbox-validate.test.js tests/approval-pure.test.js tests/cache-service.test.js tests/token-flow.test.js tests/queue-service.test.js tests/storage-service.test.js tests/paper-analyzer.test.js tests/context-engine.test.js tests/tool-registry.test.js tests/mcp-gateway.test.js tests/auth-middleware.test.js tests/standard-crawler.test.js tests/connector-parser.test.js tests/tracker-crawl.test.js"
   },
   "dependencies": {

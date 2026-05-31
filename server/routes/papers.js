@@ -27,7 +27,8 @@ async function findDuplicate(title, doi, text) {
   }
 
   if (title) {
-    const byTitle = await Paper.findOne({ title: { $regex: new RegExp(`^${title.slice(0, 30)}`, "i") } });
+    const escaped = title.slice(0, 30).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const byTitle = await Paper.findOne({ title: { $regex: new RegExp(`^${escaped}`, "i") } });
     if (byTitle) return byTitle;
   }
 
@@ -119,9 +120,11 @@ router.post("/upload", authOptional, async (req, res) => {
         // Extract PDF text
         let text = "";
         try {
-          const pdfParse = (await import("pdf-parse")).default;
-          const parsed = await pdfParse(buffer);
-          text = parsed.text.slice(0, 50000);
+          const { PDFParse } = await import("pdf-parse");
+          const parser = new PDFParse({ data: buffer, verbosity: 0 });
+          await parser.load({ data: buffer });
+          const parsed = await parser.getText();
+          text = (parsed.text || "").slice(0, 50000);
         } catch (parseErr) {
           console.error("PDF parse error:", parseErr.message);
           // Continue without text — store as "error"

@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const eroSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
-    sourceData: [{ name: String, uri: String, size: Number, type: String }],
+    sourceData: [{ name: String, uri: String, size: Number, type: { type: String } }],
     transformedData: [{ name: String, uri: String }],
     scripts: [{ type: mongoose.Schema.Types.ObjectId, ref: "GeneratedScript" }],
     environment: { type: mongoose.Schema.Types.Mixed, default: { language: "python" } },

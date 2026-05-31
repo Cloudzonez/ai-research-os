@@ -4,16 +4,34 @@ import { dequeue, completeJob, failJob, getQueueStats } from "../services/queue.
 import Paper from "../models/Paper.js";
 import { buildPaperAnalysisPrompt } from "../prompts/worker.js";
 
-async function run() {
-  console.log("Worker starting...");
+const RECONNECT_DELAY_MS = 5000;
+const MAX_RECONNECT_ATTEMPTS = 12;
 
+async function connectWithRetry(attempt = 1) {
   try {
-    await mongoose.connect(config.mongoUri);
-    console.log("Worker connected to MongoDB");
+    await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
+    console.log(`[worker] MongoDB connected (${config.mongoUri})`);
+    return true;
   } catch (err) {
-    console.error("Worker MongoDB connection failed:", err.message);
-    process.exit(1);
+    console.error(`[worker] MongoDB connection failed (attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS}): ${err.message}`);
+    if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+      console.error("[worker] Max reconnect attempts reached, exiting");
+      process.exit(1);
+    }
+    await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS));
+    return connectWithRetry(attempt + 1);
   }
+}
+
+async function run() {
+  console.log("[worker] Starting...");
+
+  await connectWithRetry();
+
+  mongoose.connection.on("disconnected", async () => {
+    console.error("[worker] MongoDB disconnected unexpectedly, reconnecting...");
+    await connectWithRetry();
+  });
 
   const handledTypes = ["parse_pdf", "summarize_paper"];
 
@@ -22,7 +40,7 @@ async function run() {
       const job = await dequeue(handledTypes);
       if (!job) return;
 
-      console.log(`Processing job ${job._id}: ${job.type}`);
+      console.log(`[worker] Processing job ${job._id}: ${job.type}`);
 
       try {
         let result;
@@ -37,29 +55,30 @@ async function run() {
             throw new Error(`Unknown job type: ${job.type}`);
         }
         await completeJob(job._id, result);
-        console.log(`Job ${job._id} completed`);
+        console.log(`[worker] Job ${job._id} completed`);
       } catch (err) {
-        console.error(`Job ${job._id} failed:`, err.message);
+        console.error(`[worker] Job ${job._id} failed:`, err.message);
         await failJob(job._id, err.message);
       }
     } catch (err) {
-      console.error("Worker tick error:", err.message);
+      console.error(`[worker] Tick error:`, err.message);
     }
   }
 
-  // Poll every 2 seconds
   setInterval(tick, 2000);
-  console.log("Worker running, polling every 2s");
+  console.log("[worker] Running, polling every 2s");
 
-  // Health reporting
   setInterval(async () => {
-    const stats = await getQueueStats();
-    console.log("Queue stats:", stats);
+    try {
+      const stats = await getQueueStats();
+      console.log("[worker] Queue stats:", stats);
+    } catch {
+      // stats collection is non-critical
+    }
   }, 60000);
 
-  // Graceful shutdown
   process.on("SIGTERM", async () => {
-    console.log("Worker shutting down...");
+    console.log("[worker] Shutting down...");
     await mongoose.disconnect();
     process.exit(0);
   });
@@ -74,7 +93,7 @@ export async function handleParsePdf({ paperId }, deps = {}) {
   }
 
   const fs = await import("node:fs");
-  const pdfParse = deps.pdfParse || (await import("pdf-parse")).default;
+  const PDFParse = deps.PDFParse || (await import("pdf-parse")).PDFParse;
 
   let pdfBuffer;
   if (deps.readFileSync) {
@@ -83,9 +102,11 @@ export async function handleParsePdf({ paperId }, deps = {}) {
     pdfBuffer = fs.readFileSync(paper.pdfPath);
   }
 
-  const data = await pdfParse(pdfBuffer);
+  const parser = new PDFParse({ data: pdfBuffer, verbosity: 0 });
+  await parser.load({ data: pdfBuffer });
+  const data = await parser.getText();
 
-  paper.text = data.text.slice(0, 50000);
+  paper.text = (data.text || "").slice(0, 50000);
   paper.status = "parsed";
   if (paper.save) {
     await paper.save();
@@ -107,7 +128,6 @@ export async function handleSummarizePaper({ paperId }, deps = {}) {
 
   const locale = paper.tags?.some((t) => /[一-鿿]/.test(t)) ? "zh" : "en";
 
-  // If paper has full text, do comprehensive analysis (original behavior)
   if (paper.text && paper.text.length > 200) {
     const prompt = buildPaperAnalysisPrompt(paper.text);
 
@@ -121,7 +141,6 @@ export async function handleSummarizePaper({ paperId }, deps = {}) {
     paper.methods = analysis.methods || "";
     paper.limitations = analysis.limitations || "";
 
-    // Also generate structured 5-field aiSummary from full text analysis
     paper.aiSummary = {
       tldr: analysis.summary?.split(".")[0] + "." || analysis.summary || "",
       motivation: analysis.contributions || "",
@@ -131,7 +150,6 @@ export async function handleSummarizePaper({ paperId }, deps = {}) {
     };
   }
 
-  // Generate structured 5-field aiSummary from abstract if not already set
   if (!paper.aiSummary?.tldr && (paper.abstract || paper.summary)) {
     paper.aiSummary = await summarizePaperFn(
       { title: paper.title, abstract: paper.abstract || paper.summary },
@@ -139,7 +157,6 @@ export async function handleSummarizePaper({ paperId }, deps = {}) {
     );
   }
 
-  // Generate AI-styled HTML page
   if (paper.aiSummary?.tldr) {
     try {
       paper.htmlPage = await generatePaperHTMLFn(
@@ -157,7 +174,7 @@ export async function handleSummarizePaper({ paperId }, deps = {}) {
       );
       paper.htmlGeneratedAt = new Date();
     } catch (err) {
-      console.warn(`Worker: HTML generation failed for ${paperId}: ${err.message}`);
+      console.warn(`[worker] HTML generation failed for ${paperId}: ${err.message}`);
     }
   }
 

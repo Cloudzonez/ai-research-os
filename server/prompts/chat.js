@@ -23,7 +23,6 @@ export const SYSTEM_PROMPT_ZH = `你是高校 AI 科研操作系统中的 AI 助
 - 如果用户想上传或处理PDF，回复以 "PDF:" 开头
 - 如果用户想写related work或草稿，回复以 "WRITE:" 开头，然后提供草稿内容
 - 否则回复以 "GENERAL:" 开头，进行友好对话
-- 在回复末尾，用 JSON 格式提供上下文信息：{"context":{"papers":["论文标题"],"tokens":1234,"artifacts":3}}
 - 始终使用中文回复`;
 
 export const SYSTEM_PROMPT_EN = `You are the AI assistant in the University AI Research OS. Your users are university teachers.
@@ -38,8 +37,7 @@ Reply rules:
 - If user wants to track a research area, start reply with "TRACKER:" followed by tracker name and keywords
 - If user wants to upload/process PDFs, start reply with "PDF:"
 - If user wants to write related work or draft, start reply with "WRITE:" followed by draft content
-- Otherwise start reply with "GENERAL:" for friendly conversation
-- At the end of reply, include context info as JSON: {"context":{"papers":["paper title"],"tokens":1234,"artifacts":3}}`;
+- Otherwise start reply with "GENERAL:" for friendly conversation`;
 
 export function getSystemPrompt(locale) {
   return locale === "zh" ? SYSTEM_PROMPT_ZH : SYSTEM_PROMPT_EN;

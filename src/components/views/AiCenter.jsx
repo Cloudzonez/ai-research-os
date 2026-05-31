@@ -151,7 +151,7 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
                               <div key={i} className="flex items-center gap-2 text-xs">
                                 <Icon className={`h-3 w-3 ${sl.color} ${step.step === "ai_thinking" ? "animate-spin" : ""}`} />
                                 <span className="text-dull">{sl.label}</span>
-                                {step.papers && (
+                                {Array.isArray(step.papers) && step.papers.length > 0 && (
                                   <span className="text-[10px] text-muted">
                                     {step.papers.map((p) => p.title).join(", ").slice(0, 60)}
                                   </span>

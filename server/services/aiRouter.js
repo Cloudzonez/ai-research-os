@@ -413,7 +413,8 @@ export async function routeChatStream(userMessage, locale, options = {}) {
   if (onStep) onStep("complete", {
     kind,
     tokensUsed: tokensUsed || contextBundle.tokens,
-    papers: enrichedPapers.length,
+    paperCount: enrichedPapers.length,
+    papers: enrichedPapers,
   });
 
   return {

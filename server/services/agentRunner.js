@@ -1,4 +1,4 @@
-import { executeTool } from "./toolRegistry.js";
+import { executeTool, listTools } from "./toolRegistry.js";
 import { chat } from "./deepseek.js";
 import cache from "./cache.js";
 import { buildAgentSystemPrompt } from "../prompts/agentRunner.js";
@@ -59,7 +59,8 @@ export async function runAgent(agentSpec, userTask, options = {}) {
 
     // Step 3: Check for tool call requests
     const toolCallMatch = response.match(/\{"tool"\s*:\s*"(\w+)",\s*"input"\s*:\s*(\{.*?\})\s*\}/);
-    if (toolCallMatch && toolList.includes(toolCallMatch[1])) {
+    const registeredTools = listTools().map((t) => t.name);
+    if (toolCallMatch && registeredTools.includes(toolCallMatch[1])) {
       const toolName = toolCallMatch[1];
       let toolInput;
       try {

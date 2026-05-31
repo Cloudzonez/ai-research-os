@@ -150,13 +150,27 @@ export function parseResponse(content) {
     if (/PDF[:：]\s*/i.test(text)) kind = "pdf";
   }
 
-  const contextMatch = text.match(/\{"context":\{[^}]+\}\}/);
-  if (contextMatch) {
-    try {
-      const parsed = JSON.parse(contextMatch[0]);
-      context = { ...context, ...parsed.context };
-      text = text.replace(contextMatch[0], "").trim();
-    } catch {}
+  // Strip any trailing context JSON that the LLM might have appended
+  const contextJsonMatch = text.match(/\{"context":\s*\{/);
+  if (contextJsonMatch) {
+    const startIdx = contextJsonMatch.index;
+    const rest = text.slice(startIdx);
+    let depth = 0;
+    let endIdx = -1;
+    for (let i = 0; i < rest.length; i++) {
+      if (rest[i] === "{") depth++;
+      if (rest[i] === "}") {
+        depth--;
+        if (depth === 0) { endIdx = startIdx + i + 1; break; }
+      }
+    }
+    if (endIdx > 0) {
+      try {
+        const parsed = JSON.parse(text.slice(startIdx, endIdx));
+        context = { ...context, ...parsed.context };
+        text = text.slice(0, startIdx).trim();
+      } catch {}
+    }
   }
 
   return { kind, text: text.trim(), context };

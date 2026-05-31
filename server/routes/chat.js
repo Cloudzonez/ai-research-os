@@ -3,11 +3,18 @@ import { routeChat, routeChatStream } from "../services/aiRouter.js";
 import Message from "../models/Message.js";
 import { createApproval } from "../middleware/approval.js";
 import { authOptional } from "../middleware/auth.js";
+import { rateLimiter } from "../middleware/rateLimiter.js";
 
 const router = Router();
 
+const chatRateLimit = rateLimiter({
+  windowMs: 60000,
+  max: 20,
+  message: "聊天请求过于频繁，请稍后再试 / Too many chat requests, please slow down",
+});
+
 // ── Streaming chat endpoint (SSE) ──────────────────────────────
-router.post("/stream", authOptional, async (req, res) => {
+router.post("/stream", authOptional, chatRateLimit, async (req, res) => {
   const { text, locale, sessionId, paperId } = req.body;
   if (!text) return res.status(400).json({ error: "Text required" });
 
@@ -77,7 +84,7 @@ router.post("/stream", authOptional, async (req, res) => {
 });
 
 // ── Non-streaming chat endpoint (original) ─────────────────────
-router.post("/", authOptional, async (req, res) => {
+router.post("/", authOptional, chatRateLimit, async (req, res) => {
   try {
     const { text, locale, sessionId, paperId } = req.body;
     if (!text) return res.status(400).json({ error: "Text required" });

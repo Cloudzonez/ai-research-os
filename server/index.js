@@ -20,6 +20,7 @@ import {
   installConsoleLogCapture,
   requestLoggingMiddleware,
 } from "./services/logger.js";
+import { startScheduler } from "./services/scheduler.js";
 
 installConsoleLogCapture();
 const logger = createLogger("server");
@@ -66,6 +67,22 @@ process.on("uncaughtException", (err) => {
 });
 
 async function start() {
+  if (!config.deepseekApiKey) {
+    logger.error("DEEPSEEK_API_KEY is not configured. AI features will not work.", {
+      event: "config_missing_deepseek_key",
+    });
+    if (config.nodeEnv === "production") {
+      process.exit(1);
+    }
+  }
+
+  if (config.nodeEnv === "production" && config.authSecret === "dev-secret-change-in-production") {
+    logger.error("AUTH_SECRET is still set to the default dev value. Set a secure secret in production.", {
+      event: "config_insecure_auth_secret",
+    });
+    process.exit(1);
+  }
+
   logger.info("Server boot", {
     event: "server_boot",
     port: config.port,
@@ -76,13 +93,26 @@ async function start() {
     logLevel: config.logLevel,
   });
 
-  try {
-    await mongoose.connect(config.mongoUri);
-  } catch (err) {
-    logger.error("MongoDB connection failed; starting without persistent database", {
-      event: "mongo_connect_failed",
-      mongoUri: config.mongoUri,
-      error: err,
+  let mongoConnected = false;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
+      mongoConnected = true;
+      break;
+    } catch (err) {
+      logger.error(`MongoDB connection attempt ${attempt}/3 failed`, {
+        event: "mongo_connect_failed",
+        error: err.message,
+      });
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+  }
+
+  if (!mongoConnected) {
+    logger.warn("Starting without persistent database. Some features will be unavailable.", {
+      event: "mongo_connect_all_failed",
     });
   }
 
@@ -93,6 +123,10 @@ async function start() {
       healthUrl: `http://[::1]:${config.port}/api/health`,
       logsUrl: `http://[::1]:${config.port}/api/logs`,
     });
+
+    if (mongoConnected) {
+      startScheduler(logger);
+    }
   });
 }
 
