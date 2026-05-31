@@ -130,4 +130,26 @@ export async function crawlArxiv(query, maxResultsOrOptions, legacyOptions = {})
 }
 
 export { extractArxivId };
-export default { searchArxiv, crawlArxiv, extractArxivId };
+
+export async function resolveArxivPdfFromDoi(doi) {
+  if (!doi) return null;
+  const clean = String(doi).replace(/^https?:\/\/doi\.org\//i, "").trim();
+  if (!clean.startsWith("10.")) return null;
+
+  try {
+    const xml = await fetchArxivApi(`doi:${clean}`, 1);
+    const results = parseAtomResponse(xml);
+    if (results.length > 0 && results[0].pdfUrl) {
+      return {
+        pdfUrl: results[0].pdfUrl,
+        arxivId: results[0].url?.split("/abs/")[1] || "",
+        title: results[0].title,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export default { searchArxiv, crawlArxiv, extractArxivId, resolveArxivPdfFromDoi };

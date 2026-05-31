@@ -1,5 +1,5 @@
 import Paper from "../models/Paper.js";
-import { crawlArxiv } from "./ingestion/arxiv.js";
+import { crawlArxiv, resolveArxivPdfFromDoi } from "./ingestion/arxiv.js";
 import { searchOpenAlex } from "./ingestion/openalex.js";
 import { searchSemanticScholar } from "./ingestion/semanticScholar.js";
 import { searchGitHubRepositories } from "./ingestion/github.js";
@@ -359,6 +359,10 @@ async function maybeEnqueueSummary(created, context) {
 
 async function downloadCrawledPdfs(crawledPapers, parsedItems, context) {
   const { pdfDownloader, logger, stats, debugLog } = context;
+
+  // Enrich papers lacking pdfUrl by resolving their DOI against arXiv
+  await enrichPdfUrlsViaDoiLookup(crawledPapers, parsedItems, context);
+
   const pdfDownloadItems = collectPdfDownloadItems(crawledPapers, parsedItems);
 
   let pdfResults = null;
@@ -397,6 +401,42 @@ async function downloadCrawledPdfs(crawledPapers, parsedItems, context) {
   }
 
   return pdfResults;
+}
+
+async function enrichPdfUrlsViaDoiLookup(crawledPapers, parsedItems, context) {
+  const { debugLog } = context;
+
+  // Find new papers that have a DOI but no pdfUrl
+  const candidates = crawledPapers.filter((p) => !p.duplicate && p.itemType !== "repository" && p.doi && !p.pdfPath);
+  if (!candidates.length) return;
+
+  const toEnrich = [];
+  for (const paper of candidates) {
+    const parsed = findParsedSource(paper, parsedItems);
+    if (!parsed?.pdfUrl && paper.doi) {
+      toEnrich.push({ paper, parsed, doi: paper.doi });
+    }
+  }
+
+  if (!toEnrich.length) return;
+  if (debugLog) debugLog.begin(`DOI → arXiv lookup — ${toEnrich.length} papers lacking pdfUrl`);
+
+  let resolved = 0;
+  for (const { paper, parsed, doi } of toEnrich) {
+    try {
+      const resolvedPdf = await resolveArxivPdfFromDoi(doi);
+      if (resolvedPdf) {
+        // Set pdfUrl on the parsed item so collectPdfDownloadItems picks it up
+        if (parsed) parsed.pdfUrl = resolvedPdf.pdfUrl;
+        resolved += 1;
+        if (debugLog) debugLog.detail(`DOI resolved to arXiv PDF`, { doi: doi.slice(0, 40), arxivId: resolvedPdf.arxivId, title: paper.title?.slice(0, 50) });
+      }
+    } catch {
+      // Non-fatal — continue with next paper
+    }
+  }
+
+  if (debugLog) debugLog.end(`DOI → arXiv lookup done`, { candidates: toEnrich.length, resolved });
 }
 
 function collectPdfDownloadItems(crawledPapers, parsedItems) {
