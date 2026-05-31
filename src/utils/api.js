@@ -46,6 +46,85 @@ export const api = {
     return request("/auth/me");
   },
 
+  async updateProfile(data) {
+    return request("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    return request("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
+
+  // ── Sessions (Chat History) ──────────────────
+  async getSessions() {
+    const data = await request("/sessions");
+    return data.sessions || [];
+  },
+
+  async createSession(title) {
+    const data = await request("/sessions", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    });
+    return data.session;
+  },
+
+  async renameSession(id, title) {
+    return request(`/sessions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
+  },
+
+  async deleteSession(id) {
+    return request(`/sessions/${id}`, { method: "DELETE" });
+  },
+
+  async toggleMarkSession(id) {
+    return request(`/sessions/${id}/mark`, { method: "PATCH" });
+  },
+
+  async toggleShareSession(id) {
+    return request(`/sessions/${id}/share`, { method: "PATCH" });
+  },
+
+  async getSessionMessages(id) {
+    const data = await request(`/sessions/${id}/messages`);
+    return data;
+  },
+
+  // ── Admin ────────────────────────────────────
+  async adminGetUsers() {
+    const data = await request("/admin/users");
+    return data.users || [];
+  },
+
+  async adminGetUser(userId) {
+    const data = await request(`/admin/users/${userId}`);
+    return data.user || data;
+  },
+
+  async adminUpdateUser(userId, data_) {
+    return request(`/admin/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data_),
+    });
+  },
+
+  async adminDeactivateUser(userId) {
+    return request(`/admin/users/${userId}`, { method: "DELETE" });
+  },
+
+  async adminGetStats() {
+    const data = await request("/admin/stats");
+    return data.stats || data;
+  },
+
   // ── Chat ────────────────────────────────────
   async submitMessage(text, locale) {
     const data = await request("/chat", {

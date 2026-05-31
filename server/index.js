@@ -13,6 +13,8 @@ import mcpRoutes from "./routes/mcp.js";
 import foundryRoutes from "./routes/foundry.js";
 import dashboardRoutes from "./routes/dashboards.js";
 import logRoutes from "./routes/logs.js";
+import sessionRoutes from "./routes/sessions.js";
+import adminRoutes from "./routes/admin.js";
 import {
   createLogger,
   errorLoggingMiddleware,
@@ -45,6 +47,8 @@ app.use("/api/writing", writingRoutes);
 app.use("/api/foundry", foundryRoutes);
 app.use("/api/dashboards", dashboardRoutes);
 app.use("/api/logs", logRoutes);
+app.use("/api/sessions", sessionRoutes);
+app.use("/api/admin", adminRoutes);
 app.use(errorLoggingMiddleware);
 
 mongoose.connection.on("connected", () => {

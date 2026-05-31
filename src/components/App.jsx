@@ -4,9 +4,11 @@ import { api } from "../utils/api.js";
 import { cn } from "../utils/cn.js";
 import ToastProvider, { useToast } from "./Toast.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
+import { AuthProvider, useAuth } from "./AuthContext.jsx";
 import Header from "./Header.jsx";
 import Navigation from "./Navigation.jsx";
 import ContextPanel from "./ContextPanel.jsx";
+import ChatHistory from "./ChatHistory.jsx";
 import Login from "./Login.jsx";
 import AiCenter from "./views/AiCenter.jsx";
 import TrackersView from "./views/TrackersView.jsx";
@@ -16,11 +18,19 @@ import GovernanceView from "./views/GovernanceView.jsx";
 import FoundryView from "./views/FoundryView.jsx";
 import DashboardsView from "./views/DashboardsView.jsx";
 import PaperDetailView from "./views/PaperDetailView.jsx";
+import ProfileView from "./views/ProfileView.jsx";
+import AdminDashboardView from "./views/AdminDashboardView.jsx";
 
-const VIEWS = { ai: AiCenter, trackers: TrackersView, library: LibraryView, writing: WritingView, governance: GovernanceView, dashboards: DashboardsView, foundry: FoundryView, paperDetail: PaperDetailView };
+const VIEWS = {
+  ai: AiCenter, trackers: TrackersView, library: LibraryView,
+  writing: WritingView, governance: GovernanceView, dashboards: DashboardsView,
+  foundry: FoundryView, paperDetail: PaperDetailView,
+  profile: ProfileView, admin: AdminDashboardView,
+};
 
 function AppContent() {
   const { addToast } = useToast();
+  const { user, isAdmin, loading: authLoading, logout } = useAuth();
   const [isPending, startTransition] = useTransition();
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
   const [locale, setLocale] = useState(() => localStorage.getItem("locale") || "zh");
@@ -35,12 +45,10 @@ function AppContent() {
   const [dashboards, setDashboards] = useState([]);
   const [health, setHealth] = useState(null);
   const [tokenUsage, setTokenUsage] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(null);
 
-  // Auth state
-  const [user, setUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
-
-  const [isLoading, setIsLoading] = useState({ app: true, messages: false, upload: false, draft: false });
+  const [isLoading, setIsLoading] = useState({ app: false, messages: false, upload: false, draft: false });
   const [errors, setErrors] = useState({ trackers: null, papers: null, writing: null, messages: null });
 
   const t = useMemo(() => copy[locale], [locale]);
@@ -53,70 +61,115 @@ function AppContent() {
 
   function toggleTheme() { setTheme((t) => (t === "light" ? "dark" : "light")); }
 
-  // Auth check on mount
-  useEffect(() => {
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      setAuthChecked(true);
-      setIsLoading((p) => ({ ...p, app: false }));
-      return;
-    }
-    api.getMe()
-      .then((data) => {
-        setUser(data.user);
-        setTokenUsage({
-          quota: data.user.quota || 1000000,
-          used: data.user.quotaUsed || 0,
-        });
-      })
-      .catch(() => localStorage.removeItem("auth_token"))
-      .finally(() => {
-        setAuthChecked(true);
-        setIsLoading((p) => ({ ...p, app: false }));
-      });
-  }, []);
-
   // Load data after auth
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
-        const [p, trks, dbs, h] = await Promise.all([
-          api.fetchPapers(), api.fetchTrackers(), api.fetchDashboards(), api.healthCheck(),
+        const [p, trks, dbs, h, sess] = await Promise.all([
+          api.fetchPapers(), api.fetchTrackers(), api.fetchDashboards(),
+          api.healthCheck(), api.getSessions(),
         ]);
         setPapers(p);
         setTrackers(trks);
         setDashboards(dbs);
         setHealth(h);
-        // Load messages separately (may be empty for new users)
-        const msgs = await api.fetchInitialMessages();
-        if (msgs.length > 0) setMessages(msgs);
+        setSessions(sess);
+        if (sess.length > 0) {
+          const latest = sess[0];
+          setActiveSessionId(latest._id);
+          const { messages: msgs } = await api.getSessionMessages(latest._id);
+          setMessages(msgs);
+        } else {
+          const msgs = await api.fetchInitialMessages();
+          if (msgs.length > 0) setMessages(msgs);
+        }
       } catch (e) {
         setErrors((p) => ({ ...p, app: e.message }));
       }
     })();
   }, [user]);
 
+  // ── Session management ────────────────────────
+  async function handleNewChat() {
+    try {
+      const session = await api.createSession(locale === "zh" ? "新对话" : "New Chat");
+      setSessions((prev) => [session, ...prev]);
+      setActiveSessionId(session._id);
+      setMessages([]);
+      setActiveView("ai");
+    } catch (e) {
+      addToast(locale === "zh" ? "创建对话失败" : "Failed to create chat", "error");
+    }
+  }
+
+  async function handleSelectSession(sessionId) {
+    try {
+      setMessages([]);
+      setActiveSessionId(sessionId);
+      setActiveView("ai");
+      const { messages: msgs } = await api.getSessionMessages(sessionId);
+      setMessages(msgs);
+    } catch (e) {
+      addToast(locale === "zh" ? "加载对话失败" : "Failed to load chat", "error");
+    }
+  }
+
+  async function handleRenameSession(sessionId, title) {
+    try {
+      const result = await api.renameSession(sessionId, title);
+      setSessions((prev) => prev.map((s) => s._id === sessionId ? (result.session || result) : s));
+    } catch (e) {
+      addToast(locale === "zh" ? "重命名失败" : "Rename failed", "error");
+    }
+  }
+
+  async function handleDeleteSession(sessionId) {
+    try {
+      await api.deleteSession(sessionId);
+      setSessions((prev) => prev.filter((s) => s._id !== sessionId));
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(null);
+        setMessages([]);
+      }
+      addToast(locale === "zh" ? "对话已删除" : "Chat deleted", "success");
+    } catch (e) {
+      addToast(locale === "zh" ? "删除失败" : "Delete failed", "error");
+    }
+  }
+
+  async function handleToggleMarkSession(sessionId) {
+    try {
+      const result = await api.toggleMarkSession(sessionId);
+      setSessions((prev) => prev.map((s) => s._id === sessionId ? (result.session || result) : s));
+    } catch (e) {
+      addToast(locale === "zh" ? "操作失败" : "Operation failed", "error");
+    }
+  }
+
+  async function handleToggleShareSession(sessionId) {
+    try {
+      const result = await api.toggleShareSession(sessionId);
+      setSessions((prev) => prev.map((s) => s._id === sessionId ? (result.session || result) : s));
+      const updated = result.session || result;
+      if (updated.isShared && updated.shareToken) {
+        const shareUrl = `${window.location.origin}/api/sessions/shared/${updated.shareToken}`;
+        try { await navigator.clipboard.writeText(shareUrl); } catch {}
+        addToast(locale === "zh" ? "分享链接已复制" : "Share link copied", "success");
+      } else {
+        addToast(locale === "zh" ? "已取消分享" : "Sharing disabled", "success");
+      }
+    } catch (e) {
+      addToast(locale === "zh" ? "操作失败" : "Operation failed", "error");
+    }
+  }
+
+  // Legacy login wrapper (AuthContext handles state, we just do toast)
   function handleLogin(userData, token) {
-    localStorage.setItem("auth_token", token);
-    setUser(userData);
     setTokenUsage({
       quota: userData.quota || 1000000,
       used: userData.quotaUsed || 0,
     });
-    addToast(t.toastLoginSuccess || (locale === "zh" ? "登录成功" : "Login successful"), "success");
-  }
-
-  function handleLogout() {
-    localStorage.removeItem("auth_token");
-    setUser(null);
-    setMessages([]);
-    setPapers([]);
-    setTrackers([]);
-    setDashboards([]);
-    setHealth(null);
-    setTokenUsage(null);
-    setActiveView("ai");
   }
 
   const stats = useMemo(() => {
@@ -148,6 +201,21 @@ function AppContent() {
     if (!text) return;
     setLoading("messages", true);
     clearError("messages");
+
+    // Auto-create session if none exists
+    let sid = activeSessionId;
+    if (!sid) {
+      try {
+        const session = await api.createSession(t.newChat || "New Chat");
+        sid = session._id;
+        setSessions((prev) => [session, ...prev]);
+        setActiveSessionId(sid);
+      } catch (e) {
+        // Fallback: use "default" session ID for chat message
+        sid = "default";
+      }
+    }
+
     try {
       const result = await api.submitMessage(text, locale);
       const { message, sideEffects } = result;
@@ -219,7 +287,7 @@ function AppContent() {
   }, [startTransition]);
 
   // Loading state
-  if (isLoading.app) {
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white dark:bg-zinc-950">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
@@ -242,15 +310,30 @@ function AppContent() {
     dashboards:  { t, locale, dashboards, setDashboards, addToast },
     foundry:     { t, locale },
     paperDetail: { t, paperId: selectedPaperId, setActiveView, locale, addToast },
+    profile:     { t, locale, addToast },
+    admin:       { t, locale, addToast, health },
   };
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <Header t={t} locale={locale} switchLocale={switchLocale} theme={theme} toggleTheme={toggleTheme} onToggleContext={() => setContextOpen((v) => !v)} user={user} onLogout={handleLogout} />
+      <Header t={t} locale={locale} switchLocale={switchLocale} theme={theme} toggleTheme={toggleTheme} onToggleContext={() => setContextOpen((v) => !v)} user={user} onLogout={logout} />
 
       <div className="flex h-[calc(100vh-56px)]">
-        <aside className="shrink-0 w-[240px] border-r border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-zinc-950/50 overflow-auto">
-          <Navigation activeView={activeView} setActiveView={(v) => startTransition(() => setActiveView(v))} t={t} stats={stats} tokenUsage={tokenUsage} />
+        <aside className="shrink-0 w-[240px] border-r border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-zinc-950/50 overflow-auto flex flex-col">
+          <ChatHistory
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onNewChat={handleNewChat}
+            onSelectSession={handleSelectSession}
+            onRenameSession={handleRenameSession}
+            onDeleteSession={handleDeleteSession}
+            onToggleMarkSession={handleToggleMarkSession}
+            onToggleShareSession={handleToggleShareSession}
+            locale={locale}
+          />
+          <div className="border-t border-gray-200 dark:border-white/5">
+            <Navigation activeView={activeView} setActiveView={(v) => startTransition(() => setActiveView(v))} t={t} stats={stats} tokenUsage={tokenUsage} isAdmin={isAdmin} />
+          </div>
         </aside>
         <main className={cn("flex-1 min-w-0 overflow-auto transition-opacity duration-150", isPending && "opacity-60")}>
           <ErrorBoundary>
@@ -271,5 +354,11 @@ function AppContent() {
 }
 
 export default function App() {
-  return <ToastProvider><AppContent /></ToastProvider>;
+  return (
+    <ToastProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ToastProvider>
+  );
 }
