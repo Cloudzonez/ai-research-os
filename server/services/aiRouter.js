@@ -1,12 +1,10 @@
 import { chat, chatStream, parseResponse } from "./deepseek.js";
 import Paper from "../models/Paper.js";
 import Tracker from "../models/Tracker.js";
-import CrawlerPlugin from "../models/CrawlerPlugin.js";
 import { buildContextBundle, DEFAULT_TIER, MAX_CONTEXT_TOKENS } from "./contextEngine.js";
 import { checkBudget, recordUsage } from "./tokenFlow.js";
 import { createApproval } from "../middleware/approval.js";
 import cache from "./cache.js";
-import { suggestStandardCrawlerSpec } from "./standardCrawler.js";
 
 // ─── Tier-aware system prompt builders ─────────────────────────────
 
@@ -230,37 +228,6 @@ export async function routeChat(userMessage, locale, options = {}) {
     sideEffects.draft = text;
   }
 
-  if (kind === "crawler") {
-    const spec = await suggestStandardCrawlerSpec(userMessage, { locale });
-    const crawler = await CrawlerPlugin.create({
-      name: spec.name || userMessage.slice(0, 60),
-      description: userMessage,
-      crawlerKind: "standard",
-      crawlerSpec: spec,
-      sourceConfig: { type: spec.sources[0] || "arxiv", rateLimit: 1000 },
-      parserCode: JSON.stringify(spec, null, 2),
-      tests: spec.sources.map((source) => ({
-        input: userMessage,
-        expectedOutput: source,
-        description: `Standard connector configured: ${source}`,
-      })),
-      owner: userId || null,
-      active: true,
-      approved: true,
-    });
-    sideEffects.crawler = {
-      _id: crawler._id,
-      id: crawler._id,
-      name: crawler.name,
-      description: crawler.description,
-      crawlerKind: crawler.crawlerKind,
-      crawlerSpec: crawler.crawlerSpec,
-      sourceConfig: crawler.sourceConfig,
-      active: crawler.active,
-      approved: crawler.approved,
-    };
-  }
-
   // Enrich context bundle with papers from DB
   const enrichedPapers = contextBundle.papers.length > 0
     ? contextBundle.papers
@@ -479,47 +446,6 @@ export async function routeChatStream(userMessage, locale, options = {}) {
   if (kind === "write") {
     sideEffects.draft = text;
     if (onStep) onStep("tool_complete", { tool: "generate_draft", draft: text.slice(0, 200) });
-  }
-
-  if (kind === "crawler") {
-    if (onStep) onStep("tool_running", {
-      tool: "configure_standard_crawler",
-      message: locale === "zh" ? "正在配置标准采集器..." : "Configuring standard crawler...",
-    });
-
-    const spec = await suggestStandardCrawlerSpec(userMessage, { locale });
-    const crawler = await CrawlerPlugin.create({
-      name: spec.name || userMessage.slice(0, 60),
-      description: userMessage,
-      crawlerKind: "standard",
-      crawlerSpec: spec,
-      sourceConfig: { type: spec.sources[0] || "arxiv", rateLimit: 1000 },
-      parserCode: JSON.stringify(spec, null, 2),
-      tests: spec.sources.map((source) => ({
-        input: userMessage,
-        expectedOutput: source,
-        description: `Standard connector configured: ${source}`,
-      })),
-      owner: userId || null,
-      active: true,
-      approved: true,
-    });
-    sideEffects.crawler = {
-      _id: crawler._id,
-      id: crawler._id,
-      name: crawler.name,
-      description: crawler.description,
-      crawlerKind: crawler.crawlerKind,
-      crawlerSpec: crawler.crawlerSpec,
-      sourceConfig: crawler.sourceConfig,
-      active: crawler.active,
-      approved: crawler.approved,
-    };
-
-    if (onStep) onStep("tool_complete", {
-      tool: "configure_standard_crawler",
-      crawler: sideEffects.crawler,
-    });
   }
 
   // Step 5: Return final result

@@ -10,7 +10,7 @@ export type UserRole = "teacher" | "admin";
 export type Locale = "zh" | "en";
 
 /** Paper processing pipeline status. */
-export type PaperStatus = "parsing" | "parsed" | "summarized" | "error";
+export type PaperStatus = "parsing" | "parsed" | "summarized" | "error" | "triage_pending" | "triaged";
 
 /** Tracker crawl execution state. */
 export type CrawlStatus =

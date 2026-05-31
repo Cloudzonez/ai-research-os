@@ -4,6 +4,14 @@ const paperSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
     source: { type: String, default: "manual" },
+    sourceIds: {
+      doi: { type: String, default: "" },
+      openalex: { type: String, default: "" },
+      semanticScholar: { type: String, default: "" },
+      arxiv: { type: String, default: "" },
+      pubmed: { type: String, default: "" },
+      crossref: { type: String, default: "" },
+    },
     area: { type: String, default: "" },
     score: { type: Number, default: 0 },
     sharing: {
@@ -58,10 +66,24 @@ const paperSchema = new mongoose.Schema(
     },
     triageReasoning: { type: String, default: null },
     triagedAt: { type: Date, default: null },
+    // AI-generated structured summary — absorbed from Daily-arXiv's ai/structure.py
+    aiSummary: {
+      tldr: { type: String, default: "" },
+      motivation: { type: String, default: "" },
+      method: { type: String, default: "" },
+      result: { type: String, default: "" },
+      conclusion: { type: String, default: "" },
+    },
+    // AI-generated HTML page for rich paper display
+    htmlPage: { type: String, default: "" },
+    htmlGeneratedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
-paperSchema.index({ title: "text", abstract: "text" });
+paperSchema.index(
+  { title: "text", abstract: "text" },
+  { default_language: "english", language_override: "_textLang" }
+);
 
 export default mongoose.model("Paper", paperSchema);

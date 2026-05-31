@@ -5,7 +5,7 @@ import quickPrompts from "../../data/quickPrompts.js";
 import { EmptyState, Skeleton } from "../LoadingStates.jsx";
 import { api } from "../../utils/api.js";
 
-export default function AiCenter({ t, locale, input, setInput, submit: parentSubmit, messages, setActiveView, papers, isLoading, addToast, setMessages, setTrackers, setCrawlers, setDraft }) {
+export default function AiCenter({ t, locale, input, setInput, submit: parentSubmit, messages, setActiveView, papers, isLoading, addToast, setMessages, setTrackers, setDraft }) {
   const ref = useRef(null);
   const [streamingMsg, setStreamingMsg] = useState(null); // { text, steps[], kind }
   const [streamLoading, setStreamLoading] = useState(false);
@@ -68,10 +68,6 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
             if (data.sideEffects?.draft) {
               setDraft(data.sideEffects.draft);
               if (addToast) addToast(t.toastDraftGenerated, "success");
-            }
-            if (data.sideEffects?.crawler && setCrawlers) {
-              setCrawlers((c) => [data.sideEffects.crawler, ...c]);
-              if (addToast) addToast(locale === "zh" ? "标准采集器已配置" : "Standard crawler configured", "success");
             }
             break;
           }
@@ -202,7 +198,7 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
       <div className="shrink-0 border-t border-gray-200 dark:border-white/5 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl px-4 py-3">
         <div className="mx-auto max-w-3xl">
           <div className="flex gap-1.5 mb-2 flex-wrap">
-            {[["tracker", t.quickTracker], ["crawler", t.quickCrawler], ["pdf", t.quickPdf], ["write", t.quickWrite]].map(([k, lb]) => (
+            {[["tracker", t.quickTracker], ["pdf", t.quickPdf], ["write", t.quickWrite]].map(([k, lb]) => (
               <button key={k} className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-xs text-muted hover:text-dull hover:bg-gray-200 dark:hover:bg-white/10 transition-colors" type="button" onClick={() => setInput(quickPrompts[k][locale])} disabled={streamLoading}>{lb}</button>
             ))}
           </div>

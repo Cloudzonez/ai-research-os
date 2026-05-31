@@ -14,9 +14,10 @@ import LibraryView from "./views/LibraryView.jsx";
 import WritingView from "./views/WritingView.jsx";
 import GovernanceView from "./views/GovernanceView.jsx";
 import FoundryView from "./views/FoundryView.jsx";
+import DashboardsView from "./views/DashboardsView.jsx";
 import PaperDetailView from "./views/PaperDetailView.jsx";
 
-const VIEWS = { ai: AiCenter, trackers: TrackersView, library: LibraryView, writing: WritingView, governance: GovernanceView, foundry: FoundryView, paperDetail: PaperDetailView };
+const VIEWS = { ai: AiCenter, trackers: TrackersView, library: LibraryView, writing: WritingView, governance: GovernanceView, dashboards: DashboardsView, foundry: FoundryView, paperDetail: PaperDetailView };
 
 function AppContent() {
   const { addToast } = useToast();
@@ -31,7 +32,7 @@ function AppContent() {
   const [messages, setMessages] = useState([]);
   const [papers, setPapers] = useState([]);
   const [trackers, setTrackers] = useState([]);
-  const [crawlers, setCrawlers] = useState([]);
+  const [dashboards, setDashboards] = useState([]);
   const [health, setHealth] = useState(null);
   const [tokenUsage, setTokenUsage] = useState(null);
 
@@ -80,12 +81,12 @@ function AppContent() {
     if (!user) return;
     (async () => {
       try {
-        const [p, trks, cr, h] = await Promise.all([
-          api.fetchPapers(), api.fetchTrackers(), api.getCrawlers(), api.healthCheck(),
+        const [p, trks, dbs, h] = await Promise.all([
+          api.fetchPapers(), api.fetchTrackers(), api.fetchDashboards(), api.healthCheck(),
         ]);
         setPapers(p);
         setTrackers(trks);
-        setCrawlers(cr);
+        setDashboards(dbs);
         setHealth(h);
         // Load messages separately (may be empty for new users)
         const msgs = await api.fetchInitialMessages();
@@ -112,7 +113,7 @@ function AppContent() {
     setMessages([]);
     setPapers([]);
     setTrackers([]);
-    setCrawlers([]);
+    setDashboards([]);
     setHealth(null);
     setTokenUsage(null);
     setActiveView("ai");
@@ -125,10 +126,10 @@ function AppContent() {
     return [
       { label: t.activeTrackers, value: String(trackers.length) },
       { label: t.tokenBudget, value: tokenUsage ? `${(tokenUsage.used / 1000).toFixed(0)}K` : "0" },
-      { label: t.reusableAssets, value: String(papers.length + crawlers.length) },
+      { label: t.reusableAssets, value: String(papers.length + dashboards.length) },
       { label: t.monthlyUse, value: `${percentUsed}%` },
     ];
-  }, [t, trackers.length, papers.length, crawlers.length, tokenUsage]);
+  }, [t, trackers.length, papers.length, dashboards.length, tokenUsage]);
 
   const setLoading = useCallback((k, v) => setIsLoading((p) => ({ ...p, [k]: v })), []);
   const setError = useCallback((k, v) => setErrors((p) => ({ ...p, [k]: v })), []);
@@ -209,7 +210,7 @@ function AppContent() {
       if (e.ctrlKey || e.metaKey) {
         const map = { "1": "ai", "2": "trackers", "3": "library", "4": "writing", "5": "governance" };
         if (map[e.key]) { e.preventDefault(); startTransition(() => setActiveView(map[e.key])); }
-        if (e.key === "6") { e.preventDefault(); startTransition(() => setActiveView("foundry")); }
+        if (e.key === "6") { e.preventDefault(); startTransition(() => setActiveView("dashboards")); }
         if (e.key === "k") { e.preventDefault(); document.querySelector("textarea")?.focus(); }
       }
     };
@@ -233,11 +234,12 @@ function AppContent() {
 
   const ActiveView = VIEWS[activeView] || VIEWS.ai;
   const vp = {
-    ai:          { t, locale, input, setInput, messages, setMessages, setTrackers, setCrawlers, setDraft, setActiveView, papers, addToast },
+    ai:          { t, locale, input, setInput, messages, setMessages, setTrackers, setDraft, setActiveView, papers, addToast },
     trackers:    { t, trackers, setTrackers, setInput, setActiveView, locale, isLoading: false, error: errors.trackers, addToast },
     library:     { t, papers, onUpload: handleUpload, onSelectPaper: handleSelectPaper, isLoading: isLoading.upload, error: errors.papers },
     writing:     { t, draft, setDraft, locale, onGenerateDraft: handleGenerateDraft, isLoading: isLoading.draft, error: errors.writing },
-    governance:  { t, health, tokenUsage, crawlers },
+    governance:  { t, health, tokenUsage },
+    dashboards:  { t, locale, dashboards, setDashboards, addToast },
     foundry:     { t, locale },
     paperDetail: { t, paperId: selectedPaperId, setActiveView, locale, addToast },
   };
@@ -257,7 +259,7 @@ function AppContent() {
         </main>
       </div>
 
-      <ContextPanel t={t} papers={papers} trackers={trackers} health={health} crawlers={crawlers} open={contextOpen} onClose={() => setContextOpen(false)} />
+      <ContextPanel t={t} papers={papers} trackers={trackers} health={health} dashboards={dashboards} open={contextOpen} onClose={() => setContextOpen(false)} />
 
       <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/5 rounded-full px-3 py-1.5 text-[10px] text-muted shadow-lg">
         <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-dull">Ctrl+1-6</kbd> views &middot;

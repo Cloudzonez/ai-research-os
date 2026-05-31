@@ -1,10 +1,11 @@
 import { chat, parseResponse } from "./deepseek.js";
 import Paper from "../models/Paper.js";
-import { searchArxiv } from "./ingestion/arxiv.js";
+import { searchArxiv, crawlArxiv } from "./ingestion/arxiv.js";
 import { searchOpenAlex } from "./ingestion/openalex.js";
 import { searchSemanticScholar } from "./ingestion/semanticScholar.js";
 import { searchGitHubRepositories } from "./ingestion/github.js";
 import { downloadBatchPdfs } from "./pdfDownloader.js";
+import { enqueue } from "./queue.js";
 
 const SUPPORTED_SOURCES = ["arxiv", "openalex", "semantic_scholar", "github"];
 const SOURCE_ALIASES = {
@@ -70,7 +71,7 @@ export async function runStandardCrawler(spec, options = {}) {
     ...spec,
     aiText: JSON.stringify(spec),
   });
-  const connectors = options.connectors || defaultConnectors();
+  const connectors = options.connectors || await defaultConnectors();
   const paperStore = options.paperStore || createMongoosePaperStore();
   const aiParser = options.aiParser || null;
   const aiParserOptions = options.aiParserOptions || {};
@@ -161,6 +162,15 @@ export async function runStandardCrawler(spec, options = {}) {
     const created = await paperStore.create(item);
     stats.created += 1;
     items.push({ ...toResponseItem(created), duplicate: false });
+
+    // Auto-enqueue AI summarization for new papers (skip repositories)
+    if (item.itemType !== "repository" && created._id) {
+      try {
+        await enqueue("summarize_paper", { paperId: created._id.toString() }, {});
+      } catch {
+        // Non-critical — paper is created, summarization can be retried
+      }
+    }
   }
 
   // Merge per-source stats back into sourceResults
@@ -361,13 +371,49 @@ function itemIdentity(item) {
   return `${item.source}:${item.title.toLowerCase().replace(/\s+/g, " ").trim()}`;
 }
 
-function defaultConnectors() {
-  return {
-    arxiv: searchArxiv,
-    openalex: searchOpenAlex,
-    semantic_scholar: searchSemanticScholar,
+async function defaultConnectors() {
+  const connectors = {
     github: searchGitHubRepositories,
   };
+
+  try {
+    const paperSearchModule = await import("./paperSearch/index.js");
+    const { getSearchService } = paperSearchModule;
+
+    connectors.arxiv = async (query, maxResults, options) => {
+      const svc = getSearchService();
+      const { results } = await svc.search({
+        query, maxResults, providers: ["arxiv"],
+        filters: options?.filters || {}, deduplicate: false,
+      });
+      return results.map((p) => ({ ...p, source: "arxiv", _raw: p }));
+    };
+
+    connectors.openalex = async (query, maxResults, options) => {
+      const svc = getSearchService();
+      const { results } = await svc.search({
+        query, maxResults, providers: ["openalex"],
+        filters: options?.filters || {}, deduplicate: false,
+      });
+      return results.map((p) => ({ ...p, source: "openalex", _raw: p }));
+    };
+
+    connectors.semantic_scholar = async (query, maxResults, options) => {
+      const svc = getSearchService();
+      const { results } = await svc.search({
+        query, maxResults, providers: ["semantic_scholar"],
+        filters: options?.filters || {}, deduplicate: false,
+      });
+      return results.map((p) => ({ ...p, source: "semantic_scholar", _raw: p }));
+    };
+
+    return connectors;
+  } catch {
+    connectors.arxiv = crawlArxiv;
+    connectors.openalex = searchOpenAlex;
+    connectors.semantic_scholar = searchSemanticScholar;
+    return connectors;
+  }
 }
 
 function sourceLabel(source) {

@@ -96,33 +96,80 @@ export async function handleParsePdf({ paperId }, deps = {}) {
 export async function handleSummarizePaper({ paperId }, deps = {}) {
   const PaperModel = deps.PaperModel || Paper;
   const chatFn = deps.chat || (await import("../services/deepseek.js")).chat;
+  const summarizePaperFn = deps.summarizePaper || (await import("../services/paperSummarizer.js")).summarizePaper;
+  const generatePaperHTMLFn = deps.generatePaperHTML || (await import("../services/htmlRenderer.js")).generatePaperHTML;
 
   const paper = await PaperModel.findById(paperId);
-  if (!paper || !paper.text) {
-    throw new Error("Paper not found or no text extracted");
+  if (!paper) {
+    throw new Error("Paper not found");
   }
 
-  const prompt = `Analyze this research paper text and return a JSON object with: summary (2-3 sentence academic summary), contributions (key contributions as array of strings), methods (research methods used), limitations (stated or apparent limitations).
+  const locale = paper.tags?.some((t) => /[一-鿿]/.test(t)) ? "zh" : "en";
+
+  // If paper has full text, do comprehensive analysis (original behavior)
+  if (paper.text && paper.text.length > 200) {
+    const prompt = `Analyze this research paper text and return a JSON object with: summary (2-3 sentence academic summary), contributions (key contributions as array of strings), methods (research methods used), limitations (stated or apparent limitations).
 
 Paper text: ${paper.text.slice(0, 8000)}
 
 Return ONLY valid JSON: {"summary":"...","contributions":["..."],"methods":"...","limitations":"..."}`;
 
-  const result = await chatFn([{ role: "user", content: prompt }], "en");
-  const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("No JSON found in response");
+    const result = await chatFn([{ role: "user", content: prompt }], "en");
+    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found in response");
 
-  const analysis = JSON.parse(jsonMatch[0]);
-  paper.summary = analysis.summary || "";
-  paper.contributions = Array.isArray(analysis.contributions) ? analysis.contributions.join("; ") : (analysis.contributions || "");
-  paper.methods = analysis.methods || "";
-  paper.limitations = analysis.limitations || "";
+    const analysis = JSON.parse(jsonMatch[0]);
+    paper.summary = analysis.summary || "";
+    paper.contributions = Array.isArray(analysis.contributions) ? analysis.contributions.join("; ") : (analysis.contributions || "");
+    paper.methods = analysis.methods || "";
+    paper.limitations = analysis.limitations || "";
+
+    // Also generate structured 5-field aiSummary from full text analysis
+    paper.aiSummary = {
+      tldr: analysis.summary?.split(".")[0] + "." || analysis.summary || "",
+      motivation: analysis.contributions || "",
+      method: analysis.methods || "",
+      result: "",
+      conclusion: analysis.limitations || "",
+    };
+  }
+
+  // Generate structured 5-field aiSummary from abstract if not already set
+  if (!paper.aiSummary?.tldr && (paper.abstract || paper.summary)) {
+    paper.aiSummary = await summarizePaperFn(
+      { title: paper.title, abstract: paper.abstract || paper.summary },
+      locale
+    );
+  }
+
+  // Generate AI-styled HTML page
+  if (paper.aiSummary?.tldr) {
+    try {
+      paper.htmlPage = await generatePaperHTMLFn(
+        {
+          title: paper.title,
+          authors: paper.authors || [],
+          abstract: paper.abstract || paper.summary || "",
+          categories: paper.tags || [],
+          url: paper.url || "",
+          pdfUrl: paper.pdfUrl || (paper.url ? paper.url.replace("/abs/", "/pdf/") : ""),
+          doi: paper.doi || "",
+          aiSummary: paper.aiSummary,
+        },
+        locale
+      );
+      paper.htmlGeneratedAt = new Date();
+    } catch (err) {
+      console.warn(`Worker: HTML generation failed for ${paperId}: ${err.message}`);
+    }
+  }
+
   paper.status = "summarized";
   if (paper.save) {
     await paper.save();
   }
 
-  return { paperId, status: "summarized" };
+  return { paperId, status: "summarized", hasHtml: !!paper.htmlPage };
 }
 
 // Only auto-start when running as the main worker process (not when imported for tests)

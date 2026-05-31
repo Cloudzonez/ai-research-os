@@ -7,11 +7,11 @@ const NAV_ITEMS = [
   { id: "library",     icon: "M4 4.5A2.5 2.5 0 0 1 6.5 2h11A2.5 2.5 0 0 1 20 4.5v15a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15Z" },
   { id: "writing",     icon: "M15.232 5.232a1.5 1.5 0 0 1 2.121 0l1.415 1.414a1.5 1.5 0 0 1 0 2.121l-9.9 9.9a1.5 1.5 0 0 1-.683.394l-3.5.875a.75.75 0 0 1-.914-.914l.875-3.5a1.5 1.5 0 0 1 .394-.683l9.9-9.9Z" },
   { id: "governance", icon: "M12 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM3.5 8a8.5 8.5 0 0 1 14.132-4.95l1.344-1.345a.5.5 0 0 1 .854.354V7H15a.5.5 0 0 1-.354-.854l1.233-1.233A7.5 7.5 0 0 0 4.41 9.254a.75.75 0 0 1-1.39-.486A8.443 8.443 0 0 1 3.5 8Z" },
-  { id: "foundry",  icon: "M4.5 4.5a2.25 2.25 0 0 1 2.25-2.25h10.5A2.25 2.25 0 0 1 19.5 4.5v15a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5v-15Z M8.25 12h7.5M12 8.25v7.5" },
+  { id: "dashboards", icon: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" },
 ];
 
 const LABELS = {
-  ai: "aiCenter", trackers: "trackers", library: "library", writing: "writing", governance: "governance", foundry: "foundry",
+  ai: "aiCenter", trackers: "trackers", library: "library", writing: "writing", governance: "governance", dashboards: "dashboards",
 };
 
 export default function Navigation({ activeView, setActiveView, t, stats, tokenUsage }) {

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import Paper from "../models/Paper.js";
 import { enqueue } from "../services/queue.js";
-import { searchArxiv } from "../services/ingestion/arxiv.js";
+import { crawlArxiv } from "../services/ingestion/arxiv.js";
 import { searchOpenAlex } from "../services/ingestion/openalex.js";
 import { downloadBatchPdfs } from "../services/pdfDownloader.js";
 import { authOptional } from "../middleware/auth.js";
@@ -171,7 +171,7 @@ router.post("/upload", authOptional, async (req, res) => {
   }
 });
 
-// POST analyze paper with AI
+// POST analyze paper with AI (enqueue summarization)
 router.post("/:id/analyze", authOptional, async (req, res) => {
   try {
     const paper = await Paper.findById(req.params.id);
@@ -182,6 +182,95 @@ router.post("/:id/analyze", authOptional, async (req, res) => {
     });
 
     res.json({ message: "Analysis queued", jobId: job._id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST summarize paper (immediate, not queued)
+// Generates structured 5-field aiSummary + AI-styled HTML page
+router.post("/:id/summarize", authOptional, async (req, res) => {
+  try {
+    const paper = await Paper.findById(req.params.id);
+    if (!paper) return res.status(404).json({ error: "Paper not found" });
+
+    const { summarizePaper } = await import("../services/paperSummarizer.js");
+    const { generatePaperHTML } = await import("../services/htmlRenderer.js");
+
+    const locale = req.body.locale || "zh";
+
+    // Generate structured summary from abstract
+    const aiSummary = await summarizePaper(
+      { title: paper.title, abstract: paper.abstract || paper.summary || paper.text || "" },
+      locale
+    );
+
+    paper.aiSummary = aiSummary;
+
+    // Generate AI-styled HTML page
+    try {
+      paper.htmlPage = await generatePaperHTML(
+        {
+          title: paper.title,
+          authors: paper.authors || [],
+          abstract: paper.abstract || paper.summary || "",
+          categories: paper.tags || [],
+          url: paper.url || "",
+          pdfUrl: paper.pdfUrl || (paper.url ? paper.url.replace("/abs/", "/pdf/") : ""),
+          doi: paper.doi || "",
+          aiSummary,
+        },
+        locale
+      );
+      paper.htmlGeneratedAt = new Date();
+    } catch (htmlErr) {
+      console.warn(`HTML generation failed: ${htmlErr.message}`);
+    }
+
+    paper.status = "summarized";
+    await paper.save();
+
+    res.json({ paper, aiSummary, hasHtml: !!paper.htmlPage });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET AI-generated HTML page for a paper
+router.get("/:id/html", async (req, res) => {
+  try {
+    const paper = await Paper.findById(req.params.id).lean();
+    if (!paper) return res.status(404).json({ error: "Paper not found" });
+
+    if (paper.htmlPage) {
+      return res.type("text/html").send(paper.htmlPage);
+    }
+
+    // Generate on-the-fly if not cached (with fallback)
+    const { generatePaperHTML } = await import("../services/htmlRenderer.js");
+    const locale = req.query.locale || "zh";
+
+    const html = await generatePaperHTML(
+      {
+        title: paper.title,
+        authors: paper.authors || [],
+        abstract: paper.abstract || paper.summary || "",
+        categories: paper.tags || [],
+        url: paper.url || "",
+        pdfUrl: paper.pdfUrl || (paper.url ? paper.url.replace("/abs/", "/pdf/") : ""),
+        doi: paper.doi || "",
+        aiSummary: paper.aiSummary || {},
+      },
+      locale
+    );
+
+    // Cache the generated HTML
+    await Paper.findByIdAndUpdate(req.params.id, {
+      htmlPage: html,
+      htmlGeneratedAt: new Date(),
+    });
+
+    res.type("text/html").send(html);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -201,7 +290,7 @@ router.post("/ingest", authOptional, async (req, res) => {
 
     if (activeSources.includes("arxiv")) {
       try {
-        const arxivPapers = await searchArxiv(query, maxResults);
+        const arxivPapers = await crawlArxiv(query, { maxResults, dedup: false });
         for (const ap of arxivPapers) {
           const dup = await findDuplicate(ap.title, ap.doi, null);
           if (dup) {
@@ -223,6 +312,10 @@ router.post("/ingest", authOptional, async (req, res) => {
           });
           ingested.push(paper);
           if (ap.pdfUrl) pdfDownloads.push({ paper, pdfUrl: ap.pdfUrl });
+          // Auto-enqueue AI summarization for new papers
+          await enqueue("summarize_paper", { paperId: paper._id.toString() }, {
+            userId: req.user?._id,
+          });
         }
       } catch (err) {
         console.error("arXiv ingestion error:", err.message);
@@ -253,6 +346,10 @@ router.post("/ingest", authOptional, async (req, res) => {
           });
           ingested.push(paper);
           if (op.pdfUrl) pdfDownloads.push({ paper, pdfUrl: op.pdfUrl });
+          // Auto-enqueue AI summarization
+          await enqueue("summarize_paper", { paperId: paper._id.toString() }, {
+            userId: req.user?._id,
+          });
         }
       } catch (err) {
         console.error("OpenAlex ingestion error:", err.message);

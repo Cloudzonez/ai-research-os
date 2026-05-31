@@ -164,6 +164,27 @@ export const api = {
     return data;
   },
 
+  async summarizePaper(paperId, locale = "zh") {
+    const data = await request(`/papers/${paperId}/summarize`, {
+      method: "POST",
+      body: JSON.stringify({ locale }),
+    });
+    return data;
+  },
+
+  async getPaperHTML(paperId, locale = "zh") {
+    const res = await fetch(apiUrl(`/papers/${paperId}/html?locale=${locale}`), {
+      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    });
+    if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`);
+    return res.text();
+  },
+
+  getPaperHTMLUrl(paperId, locale = "zh") {
+    // Returns the URL for direct linking / iframe embedding
+    return apiUrl(`/papers/${paperId}/html?locale=${locale}`);
+  },
+
   async ingestPapers(query, sources, maxResults) {
     const data = await request("/papers/ingest", {
       method: "POST",
@@ -183,11 +204,21 @@ export const api = {
   },
 
   async generateTracker(topic, locale) {
-    const data = await request("/trackers/generate", {
+    return request("/trackers/generate", {
       method: "POST",
       body: JSON.stringify({ topic, locale: locale || "zh" }),
     });
-    return data.tracker;
+  },
+
+  async crawlTracker(trackerId, locale) {
+    return request(`/trackers/${trackerId}/crawl`, {
+      method: "POST",
+      body: JSON.stringify({ locale: locale || "zh" }),
+    });
+  },
+
+  async deleteTracker(trackerId) {
+    return request(`/trackers/${trackerId}`, { method: "DELETE" });
   },
 
   // ── Writing ─────────────────────────────────
@@ -199,18 +230,42 @@ export const api = {
     return data.draft || "";
   },
 
-  // ── Crawlers ────────────────────────────────
-  async getCrawlers() {
-    const data = await request("/crawlers");
-    return data.crawlers || [];
+  // ── Dashboards ──────────────────────────────
+  async fetchDashboards() {
+    const data = await request("/dashboards");
+    return data.dashboards || [];
   },
 
-  async generateCrawler(description, sources, locale) {
-    const data = await request("/crawlers/generate", {
+  async fetchDashboard(id) {
+    return request(`/dashboards/${id}`);
+  },
+
+  async createDashboard(name, description, jsonData, locale) {
+    const data = await request("/dashboards", {
       method: "POST",
-      body: JSON.stringify({ description, sources, locale: locale || "zh" }),
+      body: JSON.stringify({ name, description, jsonData, locale: locale || "zh" }),
     });
-    return data.crawler;
+    return data.dashboard;
+  },
+
+  async deleteDashboard(id) {
+    return request(`/dashboards/${id}`, { method: "DELETE" });
+  },
+
+  // ── Dev Logs ─────────────────────────────────
+  async fetchLogs(filters = {}) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== "") params.set(key, value);
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const data = await request(`/logs${suffix}`);
+    return data;
+  },
+
+  async fetchLogStats() {
+    const data = await request("/logs/stats");
+    return data.stats || data;
   },
 
   // ── Foundry ─────────────────────────────────

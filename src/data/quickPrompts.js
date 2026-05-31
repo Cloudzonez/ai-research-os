@@ -11,10 +11,6 @@ const quickPrompts = {
     zh: "根据共享文库和我的阅读记录，帮我写一段 related work",
     en: "Use the shared library and my reading history to draft related work",
   },
-  crawler: {
-    zh: "帮我生成一个 OpenAlex 和 arXiv 的论文爬虫插件，先在沙箱测试",
-    en: "Generate an OpenAlex and arXiv paper crawler plugin and test it in sandbox",
-  },
 };
 
 export default quickPrompts;

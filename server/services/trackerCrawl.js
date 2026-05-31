@@ -1,19 +1,32 @@
 import Paper from "../models/Paper.js";
-import { searchArxiv } from "./ingestion/arxiv.js";
+import { crawlArxiv } from "./ingestion/arxiv.js";
 import { searchOpenAlex } from "./ingestion/openalex.js";
+import { searchSemanticScholar } from "./ingestion/semanticScholar.js";
 import { searchGitHubRepositories } from "./ingestion/github.js";
 import { downloadBatchPdfs } from "./pdfDownloader.js";
+import { enqueue } from "./queue.js";
+import { getSearchService } from "./paperSearch/index.js";
 
 const SOURCE_ALIASES = {
   arxiv: "arxiv",
   "arXiv": "arxiv",
   openalex: "openalex",
   "OpenAlex": "openalex",
+  "open alex": "openalex",
+  semantic_scholar: "semantic_scholar",
+  "semantic scholar": "semantic_scholar",
+  "Semantic Scholar": "semantic_scholar",
+  semanticScholar: "semantic_scholar",
+  s2: "semantic_scholar",
+  crossref: "crossref",
+  Crossref: "crossref",
+  pubmed: "pubmed",
+  PubMed: "pubmed",
   github: "github",
   "GitHub": "github",
 };
 
-const SUPPORTED_SOURCES = ["arxiv", "openalex", "github"];
+const SUPPORTED_SOURCES = ["arxiv", "openalex", "semantic_scholar", "crossref", "pubmed", "github"];
 const DEFAULT_SOURCES = ["arxiv", "openalex"];
 const STOP_WORDS = new Set([
   "about", "after", "against", "and", "are", "for", "from", "how", "into",
@@ -38,124 +51,361 @@ export function buildTrackerSpec(topic, options = {}) {
 }
 
 export async function crawlTrackerSpec(spec, options = {}) {
+  const context = createCrawlContext(spec, options);
+  const { logger, normalizedSpec, query, sources, maxResults, locale, aiParser } = context;
+
+  logger.info("crawl_start", {
+    tracker: normalizedSpec.name,
+    query,
+    sources,
+    maxResults,
+    locale,
+    aiParser: Boolean(aiParser),
+  });
+
+  const sourceData = await fetchTrackerSources(context);
+  const parsedItems = await parseCollectedItems(sourceData.collectedItems, context);
+  const crawledPapers = await storeParsedItems(parsedItems, context);
+  const pdfResults = await downloadCrawledPdfs(crawledPapers, parsedItems, context);
+
+  return buildCrawlResult({
+    sourceResults: sourceData.sourceResults,
+    errors: sourceData.errors,
+    crawledPapers,
+    pdfResults,
+  }, context);
+}
+
+function createCrawlContext(spec, options) {
   const {
-    maxResults = 5,
-    searchers = defaultSearchers(),
+    maxResults = 50,
     paperStore = createMongoosePaperStore(),
     locale = "zh",
     aiParser = null,
     aiParserOptions = {},
+    pdfDownloader = downloadBatchPdfs,
   } = options;
 
-  const query = buildSearchQuery(spec);
-  const crawledPapers = [];
+  const searchers = options.searchers || defaultSearchers(options.searchService);
+  const logger = createCrawlLogger(options.logger ?? (!options.paperStore ? console : null));
+  const queueSummaries = options.queueSummaries ?? !options.paperStore;
+  const enqueueSummarization = options.enqueueSummarization || enqueue;
+  const sources = normalizeSources(spec.sources);
+  const keywords = Array.isArray(spec.keywords) && spec.keywords.length
+    ? spec.keywords.map(String).filter(Boolean)
+    : normalizeKeywords(spec.keywords, spec.name);
+  const normalizedSpec = {
+    ...spec,
+    keywords,
+    sources,
+  };
+  const query = buildSearchQuery(normalizedSpec);
+  const stats = {
+    collected: 0,
+    parsed: 0,
+    skippedMissingTitle: 0,
+    duplicateInRun: 0,
+    duplicateExisting: 0,
+    created: 0,
+    queuedSummaries: 0,
+    queueErrors: 0,
+    pdfCandidates: 0,
+  };
+
+  return {
+    maxResults,
+    searchers,
+    paperStore,
+    locale,
+    aiParser,
+    aiParserOptions,
+    pdfDownloader,
+    logger,
+    queueSummaries,
+    enqueueSummarization,
+    sources,
+    normalizedSpec,
+    query,
+    stats,
+  };
+}
+
+async function fetchTrackerSources(context) {
+  const { sources, searchers, query, maxResults, logger, stats } = context;
   const sourceResults = [];
   const errors = [];
   const collectedItems = [];
 
-  // ── Phase 1: Fetch from all sources ──────────────────────────────
-  for (const source of normalizeSources(spec.sources)) {
+  for (const source of sources) {
     const searcher = searchers[source];
     if (!searcher) {
       errors.push({ source, error: "Source is not supported" });
+      logger.warn("source_unsupported", { source });
       continue;
     }
 
     try {
-      const papers = await searcher(query, maxResults);
+      logger.info("source_fetch_start", { source, query, maxResults });
+      const rawResults = await searcher(query, maxResults);
+      const papers = Array.isArray(rawResults) ? rawResults : [];
+      if (!Array.isArray(rawResults)) {
+        logger.warn("source_result_invalid", { source, resultType: typeof rawResults });
+      }
       sourceResults.push({ source, count: papers.length });
+      logger.info("source_fetch_complete", { source, count: papers.length });
 
       for (const rawPaper of papers) {
-        if (!rawPaper.title) continue;
-        collectedItems.push({ raw: { ...rawPaper, source: rawPaper.source || source }, source });
+        if (!rawPaper.title) {
+          stats.skippedMissingTitle += 1;
+          continue;
+        }
+        collectedItems.push(toCollectedItem(rawPaper, source));
       }
     } catch (err) {
-      errors.push({ source, error: err.message || String(err) });
+      const error = errorMessage(err);
+      errors.push({ source, error });
+      logger.warn("source_fetch_failed", { source, error });
     }
   }
 
-  // ── Phase 2: AI-parse all collected items (or basic normalize) ────
-  let parsedItems;
+  stats.collected = collectedItems.length;
+  logger.info("source_collection_complete", {
+    collected: stats.collected,
+    skippedMissingTitle: stats.skippedMissingTitle,
+    errors: errors.length,
+  });
+
+  return { sourceResults, errors, collectedItems };
+}
+
+async function parseCollectedItems(collectedItems, context) {
+  const { aiParser, aiParserOptions, normalizedSpec, locale, logger, stats } = context;
+
   if (aiParser && collectedItems.length > 0) {
     const rawBatch = collectedItems.map(({ raw }) => raw);
-    parsedItems = await aiParser(rawBatch, {
+    logger.info("parse_start", { mode: "ai", count: rawBatch.length });
+    const parsed = await aiParser(rawBatch, {
       ...aiParserOptions,
-      spec,
+      spec: normalizedSpec,
     });
-  } else if (collectedItems.length > 0) {
-    parsedItems = collectedItems.map(({ raw, source }) =>
-      normalizePaper(raw, { source, spec, locale })
-    );
-  } else {
-    parsedItems = [];
+    const parsedItems = Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) {
+      logger.warn("parse_result_invalid", { resultType: typeof parsed });
+    }
+    stats.parsed = parsedItems.length;
+    logger.info("parse_complete", { count: stats.parsed });
+    return parsedItems;
   }
 
-  // ── Phase 3: Deduplicate and store ───────────────────────────────
+  if (collectedItems.length > 0) {
+    logger.info("parse_start", { mode: "normalize", count: collectedItems.length });
+    const parsedItems = collectedItems.map(({ raw, source }) =>
+      normalizePaper(raw, { source, spec: normalizedSpec, locale })
+    );
+    stats.parsed = parsedItems.length;
+    logger.info("parse_complete", { count: stats.parsed });
+    return parsedItems;
+  }
+
+  const parsedItems = [];
+  stats.parsed = parsedItems.length;
+  logger.info("parse_complete", { count: stats.parsed });
+  return parsedItems;
+}
+
+async function storeParsedItems(parsedItems, context) {
+  const { paperStore, queueSummaries, enqueueSummarization, logger, stats } = context;
+  const crawledPapers = [];
   const seen = new Set();
 
   for (const paper of parsedItems) {
-    if (!paper.title) continue;
+    if (!paper.title) {
+      stats.skippedMissingTitle += 1;
+      continue;
+    }
 
     const identity = paperIdentity(paper);
-    if (seen.has(identity)) continue;
+    if (seen.has(identity)) {
+      stats.duplicateInRun += 1;
+      continue;
+    }
     seen.add(identity);
 
     const existing = await paperStore.findDuplicate(paper);
     if (existing) {
+      stats.duplicateExisting += 1;
       crawledPapers.push({ ...toPlainPaper(existing), duplicate: true });
       continue;
     }
 
     const created = await paperStore.create(paper);
+    stats.created += 1;
     crawledPapers.push({ ...toPlainPaper(created), duplicate: false });
+
+    await maybeEnqueueSummary(created, {
+      queueSummaries,
+      enqueueSummarization,
+      logger,
+      stats,
+    });
   }
 
-  // ── Phase 4: Download PDFs for new papers ──────────────────────────
-  const pdfDownloadItems = [];
-  for (const cp of crawledPapers) {
-    if (cp.duplicate) continue;
-    if (cp.itemType === "repository") continue;
-    const parsed = parsedItems.find(
-      (p) =>
-        (p.doi && p.doi === cp.doi) ||
-        p.title?.toLowerCase() === cp.title?.toLowerCase()
-    );
-    if (parsed?.pdfUrl) {
-      pdfDownloadItems.push({ paper: cp, pdfUrl: parsed.pdfUrl });
+  logger.info("store_complete", {
+    papers: crawledPapers.length,
+    created: stats.created,
+    duplicateInRun: stats.duplicateInRun,
+    duplicateExisting: stats.duplicateExisting,
+    queuedSummaries: stats.queuedSummaries,
+    queueErrors: stats.queueErrors,
+  });
+
+  return crawledPapers;
+}
+
+async function maybeEnqueueSummary(created, context) {
+  const { queueSummaries, enqueueSummarization, logger, stats } = context;
+  if (!queueSummaries || !created._id || created.itemType === "repository") return;
+
+  try {
+    await enqueueSummarization("summarize_paper", { paperId: created._id.toString() }, {});
+    stats.queuedSummaries += 1;
+  } catch (err) {
+    stats.queueErrors += 1;
+    logger.warn("summary_enqueue_failed", {
+      paperId: created._id.toString(),
+      error: errorMessage(err),
+    });
+  }
+}
+
+async function downloadCrawledPdfs(crawledPapers, parsedItems, context) {
+  const { pdfDownloader, logger, stats } = context;
+  const pdfDownloadItems = collectPdfDownloadItems(crawledPapers, parsedItems);
+
+  let pdfResults = null;
+  stats.pdfCandidates = pdfDownloadItems.length;
+  if (pdfDownloadItems.length > 0) {
+    try {
+      logger.info("pdf_download_start", { count: pdfDownloadItems.length });
+      pdfResults = await pdfDownloader(pdfDownloadItems);
+      logger.info("pdf_download_complete", {
+        downloaded: pdfResults?.downloaded || 0,
+        skipped: pdfResults?.skipped || 0,
+        failed: pdfResults?.failed || 0,
+      });
+    } catch (err) {
+      pdfResults = {
+        results: [],
+        downloaded: 0,
+        skipped: 0,
+        failed: pdfDownloadItems.length,
+        error: errorMessage(err),
+      };
+      logger.warn("pdf_download_failed", {
+        count: pdfDownloadItems.length,
+        error: pdfResults.error,
+      });
     }
   }
 
-  let pdfResults = null;
-  if (pdfDownloadItems.length > 0) {
-    pdfResults = await downloadBatchPdfs(pdfDownloadItems);
+  return pdfResults;
+}
+
+function collectPdfDownloadItems(crawledPapers, parsedItems) {
+  const items = [];
+
+  for (const crawledPaper of crawledPapers) {
+    if (crawledPaper.duplicate) continue;
+    if (crawledPaper.itemType === "repository") continue;
+
+    const parsed = findParsedSource(crawledPaper, parsedItems);
+    if (parsed?.pdfUrl) {
+      items.push({ paper: crawledPaper, pdfUrl: parsed.pdfUrl });
+    }
   }
 
+  return items;
+}
+
+function findParsedSource(crawledPaper, parsedItems) {
+  return parsedItems.find((parsed) =>
+    (parsed.doi && parsed.doi === crawledPaper.doi) ||
+    parsed.title?.toLowerCase() === crawledPaper.title?.toLowerCase()
+  );
+}
+
+function buildCrawlResult(resultParts, context) {
+  const { sourceResults, errors, crawledPapers, pdfResults } = resultParts;
+  const { query, sources, logger, stats } = context;
   const newPapers = crawledPapers.filter((paper) => !paper.duplicate);
+  const newPaperIds = newPapers.map((p) => p._id?.toString()).filter(Boolean);
+
+  logger.info("crawl_complete", {
+    papers: crawledPapers.length,
+    newPapers: newPapers.length,
+    errors: errors.length,
+    pdfCandidates: stats.pdfCandidates,
+  });
 
   return {
     query,
-    sources: normalizeSources(spec.sources),
+    sources,
     sourceResults,
     errors,
     papers: crawledPapers,
     newPapers,
+    newPaperIds,
     paperCount: crawledPapers.length,
     newPaperCount: newPapers.length,
     pdfResults,
   };
 }
 
+function toCollectedItem(rawPaper, source) {
+  return {
+    raw: { ...rawPaper, source: rawPaper.source || source },
+    source,
+  };
+}
+
 export function createMongoosePaperStore(PaperModel = Paper) {
+  function isPreprintDoi(doi) {
+    return /arxiv\./i.test(String(doi || "")) || /10\.48550/i.test(String(doi || ""));
+  }
+
   return {
     async findDuplicate(paper) {
+      // Pass 1: DOI exact match
       if (paper.doi) {
         const byDoi = await PaperModel.findOne({ doi: paper.doi });
         if (byDoi) return byDoi;
       }
 
       if (!paper.title) return null;
+
+      // Pass 2: Title prefix + year-compatible merge
       const prefix = escapeRegExp(paper.title.slice(0, 80));
-      return PaperModel.findOne({ title: { $regex: new RegExp(`^${prefix}`, "i") } });
+      const candidates = await PaperModel.find({
+        title: { $regex: new RegExp(`^${prefix}`, "i") },
+      }).lean();
+
+      for (const candidate of candidates) {
+        const candidateYear = candidate.year;
+        const paperYear = paper.year;
+
+        // Same year → always a match
+        if (candidateYear && paperYear && candidateYear === paperYear) return candidate;
+
+        // Adjacent years (±1) → match only if one has a preprint DOI
+        if (candidateYear && paperYear && Math.abs(candidateYear - paperYear) <= 1) {
+          if (isPreprintDoi(candidate.doi) || isPreprintDoi(paper.doi)) return candidate;
+        }
+
+        // One side missing year → match on title alone
+        if (!candidateYear || !paperYear) return candidate;
+      }
+
+      return null;
     },
 
     async create(paper) {
@@ -165,7 +415,10 @@ export function createMongoosePaperStore(PaperModel = Paper) {
 }
 
 export function buildSearchQuery(spec) {
-  const keywords = normalizeKeywords(spec.keywords, spec.name);
+  const keywords = normalizeKeywords(spec.keywords, null);
+  if (keywords.length === 0 && spec.name) {
+    keywords.push(...normalizeKeywords(null, spec.name));
+  }
   return keywords.slice(0, 4).join(" ");
 }
 
@@ -235,10 +488,14 @@ function normalizePaper(rawPaper, context) {
   const sourceLabel = {
     arxiv: "arXiv",
     openalex: "OpenAlex",
+    semantic_scholar: "Semantic Scholar",
+    crossref: "Crossref",
+    pubmed: "PubMed",
     github: "GitHub",
   }[source] || source;
   return {
     title: cleanText(rawPaper.title),
+    sourceIds: normalizeSourceIds(rawPaper.sourceIds, rawPaper.doi),
     authors: Array.isArray(rawPaper.authors) ? rawPaper.authors.filter(Boolean) : [],
     abstract: cleanText(rawPaper.abstract || rawPaper.summary),
     doi: cleanDoi(rawPaper.doi),
@@ -259,7 +516,7 @@ function normalizePaper(rawPaper, context) {
       locale === "zh" ? "追踪器抓取" : "Tracker crawl",
       ...spec.keywords.slice(0, 3),
     ].filter(Boolean),
-    status: "parsed",
+    status: "triage_pending",
     pdfUrl: cleanText(rawPaper.pdfUrl) || null,
   };
 }
@@ -271,7 +528,8 @@ function scorePaper(paper, source) {
     if (stars > 100) return 80;
     return 70;
   }
-  if (source === "openalex" && Number(paper.citedByCount) > 10) return 85;
+  if (Number(paper._score)) return Number(paper._score);
+  if (Number(paper.citedByCount) > 10) return 85;
   return 75;
 }
 
@@ -285,6 +543,7 @@ function toPlainPaper(paper) {
   return {
     _id: plain._id,
     title: plain.title,
+    sourceIds: plain.sourceIds || {},
     authors: plain.authors || [],
     abstract: plain.abstract || "",
     doi: plain.doi || "",
@@ -312,14 +571,89 @@ function cleanDoi(value) {
   return String(value || "").replace(/^https?:\/\/doi\.org\//i, "").trim();
 }
 
+function normalizeSourceIds(sourceIds, doi) {
+  const normalized = {};
+  for (const [key, value] of Object.entries(sourceIds || {})) {
+    if (value) normalized[key] = String(value);
+  }
+  const cleanedDoi = cleanDoi(doi);
+  if (cleanedDoi && !normalized.doi) normalized.doi = cleanedDoi;
+  return normalized;
+}
+
+function createCrawlLogger(logger) {
+  if (!logger) {
+    return {
+      info() {},
+      warn() {},
+    };
+  }
+
+  const write = (level, event, details = {}) => {
+    const method = logger[level] || logger.log;
+    if (typeof method !== "function") return;
+    method.call(logger, `[trackerCrawl] ${event}`, compactLogDetails(details));
+  };
+
+  return {
+    info(event, details) {
+      write("info", event, details);
+    },
+    warn(event, details) {
+      write("warn", event, details);
+    },
+  };
+}
+
+function compactLogDetails(details) {
+  return Object.fromEntries(
+    Object.entries(details || {}).filter(([, value]) => value !== undefined)
+  );
+}
+
+function errorMessage(err) {
+  return err?.message || String(err);
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function defaultSearchers() {
+function defaultSearchers(searchService = getSearchService()) {
   return {
-    arxiv: searchArxiv,
-    openalex: searchOpenAlex,
+    arxiv: createPaperSearchAdapter("arxiv", searchService, { fallback: crawlArxiv }),
+    openalex: createPaperSearchAdapter("openalex", searchService, { fallback: searchOpenAlex }),
+    semantic_scholar: createPaperSearchAdapter("semantic_scholar", searchService, { fallback: searchSemanticScholar }),
+    crossref: createPaperSearchAdapter("crossref", searchService),
+    pubmed: createPaperSearchAdapter("pubmed", searchService),
     github: searchGitHubRepositories,
+  };
+}
+
+function createPaperSearchAdapter(source, searchService, options = {}) {
+  const { fallback = null } = options;
+
+  return async (query, maxResults) => {
+    try {
+      const result = await searchService.search({
+        query,
+        maxResults,
+        providers: [source],
+        deduplicate: false,
+        enrich: false,
+      });
+
+      if (result.errors?.length && !result.results?.length) {
+        throw new Error(result.errors.map((err) => err.error).filter(Boolean).join("; ") || `${source} failed`);
+      }
+
+      return (result.results || []).map((paper) => ({
+        ...paper,
+        source: paper.source || source,
+      }));
+    } catch (err) {
+      if (fallback) return fallback(query, maxResults);
+      throw err;
+    }
   };
 }

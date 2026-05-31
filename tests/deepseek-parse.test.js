@@ -28,11 +28,10 @@ test("parseResponse extracts WRITE prefix", () => {
   assert.ok(!result.text.includes("WRITE:"));
 });
 
-test("parseResponse extracts CRAWLER prefix", () => {
+test("parseResponse no longer detects CRAWLER prefix (crawler generation removed)", () => {
   const result = parseResponse("CRAWLER: Creating crawler for arxiv papers\nSpec follows...");
-  assert.equal(result.kind, "crawler");
+  assert.equal(result.kind, "general");
   assert.ok(result.text.includes("Spec follows"));
-  assert.ok(!result.text.includes("CRAWLER:"));
 });
 
 test("parseResponse extracts GENERAL prefix", () => {
@@ -64,9 +63,9 @@ test("parseResponse handles Chinese prefix 写作", () => {
   assert.equal(result.kind, "write");
 });
 
-test("parseResponse handles Chinese prefix 爬虫", () => {
+test("parseResponse no longer detects Chinese crawler prefix (crawler generation removed)", () => {
   const result = parseResponse("爬虫：生成arXiv爬虫");
-  assert.equal(result.kind, "crawler");
+  assert.equal(result.kind, "general");
 });
 
 test("parseResponse handles Chinese prefix 一般", () => {
@@ -132,9 +131,9 @@ test("parseResponse detects inline PDF mention without prefix", () => {
   assert.equal(result.kind, "pdf");
 });
 
-test("parseResponse detects inline crawler mention without prefix", () => {
+test("parseResponse no longer classifies inline crawler mention (crawler generation removed)", () => {
   const result = parseResponse("Let me create a 爬虫：for arxiv");
-  assert.equal(result.kind, "crawler");
+  assert.equal(result.kind, "general");
 });
 
 test("parseResponse preserves text content before context JSON", () => {

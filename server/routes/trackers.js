@@ -5,6 +5,7 @@ import Tracker from "../models/Tracker.js";
 import Paper from "../models/Paper.js";
 import { chat, parseResponse } from "../services/deepseek.js";
 import { buildTrackerSpec, crawlTrackerSpec } from "../services/trackerCrawl.js";
+import { runAITriage } from "../services/aiTriage.js";
 
 const router = Router();
 
@@ -34,7 +35,7 @@ router.post("/generate", async (req, res) => {
     let aiText = "";
     try {
       const result = await chat(
-        [{ role: "user", content: `Generate a research paper and code tracker for this topic: "${topic}". Return only JSON: {"name":"...","keywords":[...],"sources":["arxiv","openalex","github"],"signals":["..."]}. Include "github" only when repository/code tracking is useful.` }],
+        [{ role: "user", content: `Generate a research paper and code tracker for this topic: "${topic}". Return only JSON: {"name":"...","keywords":[...],"sources":["arxiv","openalex","semantic_scholar","github"],"signals":["..."]}. Include "semantic_scholar" for citation/abstract-rich academic tracking. Include "github" only when repository/code tracking is useful.` }],
         locale || "zh",
         { temperature: 0.2, maxTokens: 500 }
       );
@@ -46,13 +47,25 @@ router.post("/generate", async (req, res) => {
     const trackerData = buildTrackerSpec(topic, { locale: locale || "zh", aiText });
     const crawl = await crawlTrackerSpec(trackerData, {
       locale: locale || "zh",
-      maxResults: Number(maxResults) || 5,
+      maxResults: Number(maxResults) || 50,
     });
     const crawlStatus = crawl.errors.length && crawl.paperCount === 0
       ? "failed"
       : crawl.errors.length
         ? "partial"
         : "completed";
+
+    // Run AI triage on newly crawled papers
+    let triage = null;
+    if (crawl.newPaperIds && crawl.newPaperIds.length > 0) {
+      try {
+        triage = await runAITriage(trackerData, crawl.newPaperIds, {
+          PaperModel: Paper,
+        });
+      } catch (err) {
+        console.error("AI triage failed:", err.message);
+      }
+    }
 
     const tracker = await Tracker.create({
       ...trackerData,
@@ -65,7 +78,7 @@ router.post("/generate", async (req, res) => {
       lastCrawledPaperIds: crawl.papers.map((paper) => paper._id).filter(Boolean),
     });
 
-    res.status(201).json({ tracker, crawl, papers: crawl.papers });
+    res.status(201).json({ tracker, crawl, papers: crawl.papers, triage });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -113,15 +126,29 @@ router.post("/:id/crawl", async (req, res) => {
     tracker.crawlStatus = "running";
     await tracker.save();
 
-    const crawl = await crawlTrackerSpec({
+    const trackerSpec = {
       name: tracker.name,
       keywords: tracker.keywords,
       sources: tracker.sources,
       signals: tracker.signals,
-    }, {
+    };
+
+    const crawl = await crawlTrackerSpec(trackerSpec, {
       locale: req.body.locale || "zh",
-      maxResults: Number(req.body.maxResults) || 5,
+      maxResults: Number(req.body.maxResults) || 50,
     });
+
+    // Run AI triage on newly crawled papers
+    let triage = null;
+    if (crawl.newPaperIds && crawl.newPaperIds.length > 0) {
+      try {
+        triage = await runAITriage(trackerSpec, crawl.newPaperIds, {
+          PaperModel: Paper,
+        });
+      } catch (err) {
+        console.error("AI triage failed:", err.message);
+      }
+    }
 
     tracker.papers = crawl.paperCount;
     tracker.lastRun = new Date();
@@ -135,8 +162,9 @@ router.post("/:id/crawl", async (req, res) => {
     tracker.lastCrawledPaperIds = crawl.papers.map((paper) => paper._id).filter(Boolean);
     await tracker.save();
 
-    res.json({ tracker, crawl, papers: crawl.papers });
+    res.json({ tracker, crawl, papers: crawl.papers, triage });
   } catch (err) {
+    console.error("[trackers] crawl error:", err.message, err.stack?.slice(0, 500));
     res.status(500).json({ error: err.message });
   }
 });
@@ -157,6 +185,7 @@ function toClientPaper(paper) {
     _id: paper._id,
     title: paper.title,
     source: paper.source,
+    sourceIds: paper.sourceIds || {},
     area: paper.area,
     score: paper.score,
     sharing: paper.sharing,
@@ -178,6 +207,10 @@ function toClientPaper(paper) {
     status: paper.status || "parsed",
     hasPdf: Boolean(pdfUrl),
     pdfUrl,
+    triageRelevance: paper.triageRelevance,
+    triageCategory: paper.triageCategory,
+    triageNovelty: paper.triageNovelty,
+    triageReasoning: paper.triageReasoning,
   };
 }
 

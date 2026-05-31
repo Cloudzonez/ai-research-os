@@ -458,5 +458,5 @@ test("crawled papers are stored with correct source and tags", async () => {
   assert.ok(paper.tags.includes("arXiv"));
   assert.ok(paper.tags.includes("Tracker crawl"));
   assert.ok(paper.tags.includes("test"));
-  assert.equal(paper.status, "parsed");
+  assert.equal(paper.status, "triage_pending");
 });

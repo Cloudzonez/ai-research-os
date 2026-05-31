@@ -19,4 +19,15 @@ export const config = {
   codeModel: process.env.CODE_MODEL || "deepseek-v4-pro",
   crawlerModel: process.env.CRAWLER_MODEL || process.env.CODE_MODEL || "deepseek-v4-pro",
   summaryModel: process.env.SUMMARY_MODEL || process.env.MODEL_NAME || "deepseek-v4-pro",
+  // Paper search provider API keys
+  openalexApiKey: process.env.OPENALEX_API_KEY || "",
+  crossrefEmail: process.env.CROSSREF_EMAIL || "",
+  semanticScholarApiKey: process.env.SEMANTIC_SCHOLAR_API_KEY || "",
+  pubmedApiKey: process.env.PUBMED_API_KEY || "",
+  unpaywallEmail: process.env.UNPAYWALL_EMAIL || "",
+  // Development logging
+  devVerboseLogging: process.env.DEV_VERBOSE_LOGGING !== "0",
+  persistLogs: process.env.PERSIST_LOGS !== "0",
+  logLevel: process.env.LOG_LEVEL || "debug",
+  logMemoryLimit: Number(process.env.LOG_MEMORY_LIMIT) || 1000,
 };

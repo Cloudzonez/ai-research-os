@@ -3,7 +3,7 @@ import { X, Layers3, Network, LockKeyhole, Server } from "lucide-react";
 import { sharingLabel } from "../utils/sharingLabel.js";
 import { api } from "../utils/api.js";
 
-export default function ContextPanel({ t, papers = [], trackers = [], open, onClose, health, crawlers = [] }) {
+export default function ContextPanel({ t, papers = [], trackers = [], open, onClose, health, dashboards = [] }) {
   const [mcpTools, setMcpTools] = useState([]);
 
   useEffect(() => {
@@ -105,8 +105,8 @@ export default function ContextPanel({ t, papers = [], trackers = [], open, onCl
                 <span className="text-muted">{mcpTools.length > 0 ? `${mcpTools.length} tools` : "..."}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-dull">{isZh ? "爬虫" : "Crawlers"}</span>
-                <span className="text-muted">{crawlers.length} {isZh ? "个" : "active"}</span>
+                <span className="text-dull">{isZh ? "仪表盘" : "Dashboards"}</span>
+                <span className="text-muted">{dashboards.length} {isZh ? "个" : ""}</span>
               </div>
             </div>
           </section>

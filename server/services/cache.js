@@ -68,7 +68,7 @@ class MemoryCache {
 const cache = new MemoryCache();
 
 // Periodic cleanup of expired entries
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of cache.store) {
     if (now > entry.expiresAt) {
@@ -76,5 +76,6 @@ setInterval(() => {
     }
   }
 }, 300000); // every 5 minutes
+if (cleanupTimer.unref) cleanupTimer.unref();
 
 export default cache;

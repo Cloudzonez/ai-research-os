@@ -1,0 +1,22 @@
+[
+  {
+    "key": "ctrl+alt+e",
+    "command": "REPLACE_WITH_CODEX_OR_CLAUDE_EXPLAIN_SELECTION_COMMAND",
+    "when": "editorHasSelection && editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+c",
+    "command": "REPLACE_WITH_CODEX_OR_CLAUDE_ADD_SELECTION_TO_CHAT_COMMAND",
+    "when": "editorHasSelection && editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+f",
+    "command": "REPLACE_WITH_CODEX_OR_CLAUDE_FIX_SELECTION_COMMAND",
+    "when": "editorHasSelection && editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+t",
+    "command": "REPLACE_WITH_CODEX_OR_CLAUDE_GENERATE_TESTS_COMMAND",
+    "when": "editorHasSelection && editorTextFocus"
+  }
+]

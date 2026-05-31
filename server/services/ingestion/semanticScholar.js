@@ -1,5 +1,19 @@
+import { getRateLimiter } from "../rateLimiter.js";
+import { retryWithBackoff } from "../retryHandler.js";
+import { getRequestCache } from "../requestCache.js";
+import { config } from "../../config.js";
+
+const limiter = getRateLimiter("semantic_scholar", 1);
+const cache = getRequestCache("semantic_scholar", { maxSize: 200, ttlMs: 600000 });
+const apiKey = config.semanticScholarApiKey;
+
 export async function searchSemanticScholar(query, maxResults = 10, options = {}) {
-  const baseUrl = "https://api.semanticscholar.org/graph/v1/paper/search";
+  const cacheKey = cache.generateKey("semantic_scholar", query, { maxResults });
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  await limiter.waitForPermission();
+
   const params = new URLSearchParams({
     query,
     limit: String(Math.min(Math.max(Number(maxResults) || 10, 1), 100)),
@@ -7,42 +21,45 @@ export async function searchSemanticScholar(query, maxResults = 10, options = {}
   });
 
   const headers = { Accept: "application/json" };
-  const apiKey = options.apiKey || process.env.SEMANTIC_SCHOLAR_API_KEY;
-  if (apiKey) headers["x-api-key"] = apiKey;
+  const key = options.apiKey || apiKey;
+  if (key) headers["x-api-key"] = key;
 
-  const res = await fetchWithRetry(`${baseUrl}?${params.toString()}`, { headers }, options);
-  if (!res.ok) {
-    throw new Error(`Semantic Scholar API error: ${res.status} ${res.statusText}`);
-  }
+  const result = await retryWithBackoff(
+    async () => {
+      const res = await fetch(`${baseUrl}?${params.toString()}`, {
+        headers,
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.status === 429 || res.status === 503) {
+        const err = new Error(`S2 API ${res.status}`);
+        err.status = res.status;
+        err.response = res;
+        throw err;
+      }
+      if (!res.ok) {
+        throw new Error(`Semantic Scholar API error: ${res.status}`);
+      }
+      const data = await res.json();
+      return (data.data || []).map((paper) => ({
+        title: paper.title || "",
+        authors: (paper.authors || []).map((author) => author.name || "").filter(Boolean),
+        abstract: paper.abstract || "",
+        doi: paper.externalIds?.DOI || "",
+        year: paper.year || Number(paper.publicationDate?.slice(0, 4)) || new Date().getFullYear(),
+        source: "semantic_scholar",
+        url: paper.url || "",
+        pdfUrl: paper.openAccessPdf?.url || "",
+        citedByCount: paper.citationCount || 0,
+        venue: paper.venue || "",
+      }));
+    },
+    { context: "Semantic Scholar", maxRetries: 3, initialDelayMs: 4000 }
+  );
 
-  const data = await res.json();
-  return (data.data || []).map((paper) => ({
-    title: paper.title || "",
-    authors: (paper.authors || []).map((author) => author.name || "").filter(Boolean),
-    abstract: paper.abstract || "",
-    doi: paper.externalIds?.DOI || "",
-    year: paper.year || Number(paper.publicationDate?.slice(0, 4)) || new Date().getFullYear(),
-    source: "semantic_scholar",
-    url: paper.url || "",
-    pdfUrl: paper.openAccessPdf?.url || "",
-    citedByCount: paper.citationCount || 0,
-    venue: paper.venue || "",
-  }));
+  cache.set(cacheKey, result);
+  return result;
 }
 
-async function fetchWithRetry(url, init, options = {}) {
-  const maxRetries = options.retries ?? 5;
-  const baseDelay = options.retryDelay || 4000;
-  const timeoutMs = options.timeoutMs || 15000;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
-    if (res.status !== 429 && res.status !== 503) return res;
-    if (attempt === maxRetries) return res;
-    const delay = baseDelay * Math.pow(2, attempt);
-    console.warn(`Semantic Scholar: ${res.status} on attempt ${attempt + 1}, retrying in ${delay}ms...`);
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
-}
+const baseUrl = "https://api.semanticscholar.org/graph/v1/paper/search";
 
 export default { searchSemanticScholar };

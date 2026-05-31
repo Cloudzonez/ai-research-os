@@ -23,12 +23,12 @@ const routeTemplates = {
       en: ["Retrieve papers and notes", "Build related-work matrix", "Write editable section draft"],
     },
   },
-  crawler: {
-    icon: "Workflow",
-    view: "governance",
+  dashboard: {
+    icon: "BarChart3",
+    view: "dashboards",
     steps: {
-      zh: ["生成 SourcePlugin 草案", "沙箱运行测试样例", "审批后进入院系复用库"],
-      en: ["Generate SourcePlugin draft", "Run sandbox test cases", "Approve for school reuse"],
+      zh: ["解析 JSON 数据", "AI 生成 HTML 可视化页面", "保存至仪表盘集合并展示"],
+      en: ["Parse JSON data", "AI generates HTML visualization", "Save to dashboard collection and display"],
     },
   },
   general: {

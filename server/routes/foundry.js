@@ -4,7 +4,6 @@ import { generateApp } from "../services/appFactory.js";
 import { runInSandbox } from "../services/sandbox.js";
 import GeneratedApp from "../models/GeneratedApp.js";
 import GeneratedScript from "../models/GeneratedScript.js";
-import CrawlerPlugin from "../models/CrawlerPlugin.js";
 import AgentSpec from "../models/AgentSpec.js";
 import ToolDefinition from "../models/ToolDefinition.js";
 import ExecutableResearchObject from "../models/ExecutableResearchObject.js";
@@ -14,17 +13,16 @@ const router = Router();
 // GET overview stats for Foundry workspace
 router.get("/", authRequired, async (req, res) => {
   try {
-    const [apps, scripts, crawlers, agents, tools, eros] = await Promise.all([
+    const [apps, scripts, agents, tools, eros] = await Promise.all([
       GeneratedApp.countDocuments({ owner: req.user._id }),
       GeneratedScript.countDocuments({ owner: req.user._id }),
-      CrawlerPlugin.countDocuments({ owner: req.user._id }),
       AgentSpec.countDocuments({ active: true }),
       ToolDefinition.countDocuments({ active: true }),
       ExecutableResearchObject.countDocuments({ owner: req.user._id }),
     ]);
 
     res.json({
-      stats: { apps, scripts, crawlers, agents, tools, eros },
+      stats: { apps, scripts, agents, tools, eros },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

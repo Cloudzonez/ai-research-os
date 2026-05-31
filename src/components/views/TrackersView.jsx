@@ -17,6 +17,8 @@ export default function TrackersView({ t, trackers, setTrackers, setInput, setAc
   const [detailError, setDetailError] = useState("");
   const [activePdf, setActivePdf] = useState(null);
   const [analyzing, setAnalyzing] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [showLowRelevance, setShowLowRelevance] = useState(false);
   const isZh = locale === "zh";
 
   if (error) return <ErrorDisplay message={error} />;
@@ -28,17 +30,7 @@ export default function TrackersView({ t, trackers, setTrackers, setInput, setAc
     setCreating(true);
     setCreateError("");
     try {
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch("/api/trackers/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ topic, locale }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Failed" }));
-        throw new Error(err.error || "Generation failed");
-      }
-      const data = await res.json();
+      const data = await api.generateTracker(topic, locale);
       setTrackers((prev) => [data.tracker, ...prev]);
       setCreateTopic("");
       setShowCreate(false);
@@ -55,12 +47,7 @@ export default function TrackersView({ t, trackers, setTrackers, setInput, setAc
     if (!confirm(isZh ? "确定删除此追踪器？" : "Delete this tracker?")) return;
     setDeleting(trackerId);
     try {
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch(`/api/trackers/${trackerId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Delete failed");
+      await api.deleteTracker(trackerId);
       setTrackers((prev) => prev.filter((tr) => (tr._id || tr.id) !== trackerId));
       if (addToast) addToast(isZh ? "追踪器已删除" : "Tracker deleted", "success");
     } catch {
@@ -74,17 +61,7 @@ export default function TrackersView({ t, trackers, setTrackers, setInput, setAc
     if (!trackerId) return;
     setCrawling(trackerId);
     try {
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch(`/api/trackers/${trackerId}/crawl`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ locale }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Crawl failed" }));
-        throw new Error(err.error || "Crawl failed");
-      }
-      const data = await res.json();
+      const data = await api.crawlTracker(trackerId, locale);
       setTrackers((prev) => prev.map((tr) => ((tr._id || tr.id) === trackerId ? data.tracker : tr)));
       if (addToast) addToast(isZh ? `抓取完成：${data.crawl?.paperCount || 0} 篇论文` : `Crawl complete: ${data.crawl?.paperCount || 0} papers`, "success");
     } catch (e) {
@@ -214,6 +191,10 @@ export default function TrackersView({ t, trackers, setTrackers, setInput, setAc
           onAnalyzePaper={handleAnalyzePaper}
           onClose={closeTrackerDetail}
           crawlStatusLabel={crawlStatusLabel}
+          categoryFilter={categoryFilter}
+          setCategoryFilter={setCategoryFilter}
+          showLowRelevance={showLowRelevance}
+          setShowLowRelevance={setShowLowRelevance}
         />
       )}
 
@@ -349,12 +330,45 @@ function TrackerDetailPanel({
   onAnalyzePaper,
   onClose,
   crawlStatusLabel,
+  categoryFilter,
+  setCategoryFilter,
+  showLowRelevance,
+  setShowLowRelevance,
 }) {
   const tracker = detail?.tracker;
   const crawl = detail?.crawl || {};
-  const papers = detail?.papers || [];
+  const allPapers = detail?.papers || [];
   const repositories = detail?.repositories || [];
   const dateLocale = locale === "zh" ? "zh-CN" : "en-US";
+
+  // Compute triage summary from papers
+  const triagedPapers = allPapers.filter((p) => p.status === "triaged");
+  const triage = detail?.triage || (triagedPapers.length > 0 ? {
+    totalCrawled: allPapers.length,
+    triaged: triagedPapers.length,
+    relevant: triagedPapers.filter((p) => (p.triageRelevance || 0) >= 5).length,
+    breakthroughs: triagedPapers.filter((p) => p.triageNovelty === "breakthrough").length,
+  } : null);
+
+  // Filter papers by category
+  const visiblePapers = categoryFilter === "all"
+    ? allPapers
+    : allPapers.filter((p) => p.triageCategory === categoryFilter);
+
+  // Split by relevance
+  const relevantPapers = visiblePapers.filter((p) =>
+    p.status !== "triaged" || (p.triageRelevance != null && p.triageRelevance >= 5)
+  );
+  const lowRelevancePapers = visiblePapers.filter((p) =>
+    p.status === "triaged" && p.triageRelevance != null && p.triageRelevance < 5
+  );
+
+  // Unique categories for filter tabs
+  const categories = [...new Set(allPapers.map((p) => p.triageCategory).filter(Boolean))];
+  const categoryCounts = {};
+  for (const cat of categories) {
+    categoryCounts[cat] = allPapers.filter((p) => p.triageCategory === cat).length;
+  }
 
   return (
     <>
@@ -389,10 +403,29 @@ function TrackerDetailPanel({
             <aside className="overflow-auto border-b border-gray-200 p-4 dark:border-white/10 lg:border-b-0 lg:border-r">
               <div className="grid grid-cols-2 gap-2">
                 <Metric label={isZh ? "状态" : "Status"} value={crawlStatusLabel(crawl.status || tracker?.crawlStatus)} />
-                <Metric label={isZh ? "论文" : "Papers"} value={String(crawl.paperCount ?? papers.length)} />
+                <Metric label={isZh ? "论文" : "Papers"} value={String(crawl.paperCount ?? allPapers.length)} />
                 <Metric label={isZh ? "仓库" : "Repos"} value={String(crawl.repositoryCount ?? repositories.length)} />
                 <Metric label={isZh ? "周期" : "Cadence"} value={tracker?.cadence || "Daily"} />
               </div>
+
+              {/* Triage summary */}
+              {triage && (
+                <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-xs dark:bg-emerald-500/10">
+                  <div className="font-medium text-emerald-800 dark:text-emerald-300">
+                    {isZh ? "AI 筛选完成" : "AI Triage Complete"}
+                  </div>
+                  <div className="mt-1.5 space-y-0.5 text-emerald-700 dark:text-emerald-400">
+                    <div>{isZh ? "抓取" : "Crawled"}: {triage.totalCrawled}</div>
+                    <div>{isZh ? "已筛选" : "Triaged"}: {triage.triaged}</div>
+                    <div className="font-medium">{isZh ? "相关" : "Relevant"}: {triage.relevant}</div>
+                    {triage.breakthroughs > 0 && (
+                      <div className="font-semibold text-amber-600 dark:text-amber-400">
+                        {isZh ? "突破性" : "Breakthroughs"}: {triage.breakthroughs}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-4 space-y-3 text-xs">
                 <InfoLine label={isZh ? "上次运行" : "Last run"} value={tracker?.lastRun ? new Date(tracker.lastRun).toLocaleString(dateLocale) : "-"} />
@@ -457,13 +490,31 @@ function TrackerDetailPanel({
                     <BookOpen className="h-4 w-4" />
                     {isZh ? "追踪到的论文" : "Tracked papers"}
                   </h4>
-                  <span className="text-xs text-muted">{papers.length}</span>
+                  <span className="text-xs text-muted">{relevantPapers.length}{lowRelevancePapers.length > 0 ? ` + ${lowRelevancePapers.length}` : ""} / {allPapers.length}</span>
                 </div>
-                {papers.length === 0 ? (
+
+                {/* Category filter tabs */}
+                {categories.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    <button
+                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${categoryFilter === "all" ? "bg-ink text-white dark:bg-white dark:text-ink" : "bg-gray-100 text-dull hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10"}`}
+                      onClick={() => setCategoryFilter("all")}
+                    >{isZh ? "全部" : "All"} ({allPapers.length})</button>
+                    {categories.map((cat) => (
+                      <button
+                        key={cat}
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${categoryFilter === cat ? "bg-ink text-white dark:bg-white dark:text-ink" : "bg-gray-100 text-dull hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10"}`}
+                        onClick={() => setCategoryFilter(cat)}
+                      >{cat} ({categoryCounts[cat]})</button>
+                    ))}
+                  </div>
+                )}
+
+                {visiblePapers.length === 0 ? (
                   <EmptySmall text={isZh ? "还没有抓取到论文。运行追踪器后会显示论文、摘要、PDF 与 AI 阅读状态。" : "No papers yet. Run the tracker to see papers, summaries, PDFs, and AI reading status."} />
                 ) : (
                   <div className="space-y-2">
-                    {papers.map((paper) => (
+                    {relevantPapers.map((paper) => (
                       <PaperRow
                         key={paper._id || paper.title}
                         paper={paper}
@@ -473,6 +524,31 @@ function TrackerDetailPanel({
                         onAnalyze={() => onAnalyzePaper(paper._id)}
                       />
                     ))}
+                    {lowRelevancePapers.length > 0 && (
+                      <div className="mt-3 border-t border-gray-200 pt-2 dark:border-white/10">
+                        <button
+                          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs text-muted hover:bg-gray-50 dark:hover:bg-white/5"
+                          onClick={() => setShowLowRelevance(!showLowRelevance)}
+                        >
+                          <span>{isZh ? `显示 ${lowRelevancePapers.length} 篇低相关度论文` : `Show ${lowRelevancePapers.length} low-relevance papers`}</span>
+                          <span className="text-[10px]">{showLowRelevance ? "▲" : "▼"}</span>
+                        </button>
+                        {showLowRelevance && (
+                          <div className="mt-2 space-y-2">
+                            {lowRelevancePapers.map((paper) => (
+                              <PaperRow
+                                key={paper._id || paper.title}
+                                paper={paper}
+                                isZh={isZh}
+                                analyzing={analyzing === paper._id}
+                                onViewPdf={() => setActivePdf(paper)}
+                                onAnalyze={() => onAnalyzePaper(paper._id)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </section>
@@ -533,19 +609,62 @@ function ChipSection({ title, values }) {
 }
 
 function PaperRow({ paper, isZh, analyzing, onViewPdf, onAnalyze }) {
+  const rel = paper.triageRelevance;
+  const category = paper.triageCategory;
+  const novelty = paper.triageNovelty;
+  const reasoning = paper.triageReasoning;
+  const isTriaged = paper.status === "triaged";
+
+  const relBadge = rel >= 8
+    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400"
+    : rel >= 5
+    ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400"
+    : "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400";
+
+  const noveltyBadge = novelty === "breakthrough"
+    ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400 border border-amber-300 dark:border-amber-600"
+    : "";
+
+  const categoryLabel = {
+    method: isZh ? "方法" : "Method",
+    application: isZh ? "应用" : "Application",
+    theory: isZh ? "理论" : "Theory",
+    survey: isZh ? "综述" : "Survey",
+    dataset: isZh ? "数据集" : "Dataset",
+    tool: isZh ? "工具" : "Tool",
+    unrelated: isZh ? "无关" : "Unrelated",
+  };
+
   return (
     <div className="rounded-lg border border-gray-200 p-3 dark:border-white/10">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h5 className="line-clamp-2 text-sm font-semibold text-main">{paper.title}</h5>
           <p className="mt-1 text-xs text-muted">
-            {[paper.source, paper.year, paper.status].filter(Boolean).join(" · ")}
+            {[paper.source, paper.year, paper.status === "triaged" ? (isZh ? "已筛选" : "Triaged") : paper.status].filter(Boolean).join(" · ")}
           </p>
           {(paper.summary || paper.abstract) && (
             <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-dull">{paper.summary || paper.abstract}</p>
           )}
           <div className="mt-2 flex flex-wrap gap-1">
-            {(paper.tags || []).slice(0, 5).map((tag) => <span key={tag} className="badge">{tag}</span>)}
+            {/* Triage badges */}
+            {isTriaged && rel != null && (
+              <span className={`badge text-[11px] font-medium ${relBadge}`} title={reasoning || ""}>
+                {isZh ? "相关度" : "Rel"} {rel}/10
+              </span>
+            )}
+            {isTriaged && category && category !== "unrelated" && (
+              <span className="badge bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400">
+                {categoryLabel[category] || category}
+              </span>
+            )}
+            {isTriaged && novelty && novelty !== "unknown" && novelty !== "incremental" && (
+              <span className={`badge text-[11px] font-semibold ${noveltyBadge}`}>
+                {novelty === "breakthrough" ? (isZh ? "突破性" : "Breakthrough") : (isZh ? "有趣" : "Interesting")}
+              </span>
+            )}
+            {/* Original tags */}
+            {(paper.tags || []).slice(0, isTriaged ? 3 : 5).map((tag) => <span key={tag} className="badge">{tag}</span>)}
             <span className={`badge ${paper.hasPdf ? "text-emerald-700 dark:text-emerald-400" : ""}`}>
               {paper.hasPdf ? (isZh ? "PDF 已存储" : "PDF stored") : (isZh ? "无 PDF" : "No PDF")}
             </span>

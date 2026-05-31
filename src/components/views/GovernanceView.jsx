@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { WalletCards, Settings2, Server, FlaskConical, CheckCircle2, AlertTriangle } from "lucide-react";
 
-export default function GovernanceView({ t, health, tokenUsage, crawlers = [] }) {
+export default function GovernanceView({ t, health, tokenUsage }) {
   const [mcpTools, setMcpTools] = useState([]);
   const isZh = true;
   const online = health?.status === "ok" || health?.db === "connected";
@@ -105,29 +105,29 @@ export default function GovernanceView({ t, health, tokenUsage, crawlers = [] })
           </div>
         </div>
 
-        {/* Sandbox */}
+        {/* AI Governance */}
         <div className="surface p-5">
           <div className="flex items-center gap-2 mb-4 text-xs font-medium uppercase tracking-wider text-muted">
-            <FlaskConical className="h-3.5 w-3.5" />{t.sandbox}
+            <FlaskConical className="h-3.5 w-3.5" />{t.aiSafety}
           </div>
           <div className="space-y-2 text-xs text-dull mb-3">
-            {crawlers.length === 0 ? (
-              <p className="text-muted">{isZh ? "暂无爬虫插件" : "No crawler plugins yet"}</p>
-            ) : (
-              crawlers.map((c) => (
-                <div key={c._id} className="flex items-center justify-between">
-                  <span>&middot; {c.name}</span>
-                  <span className={`text-[10px] ${c.approved ? "text-emerald-600" : "text-amber-600"}`}>
-                    {c.approved ? (isZh ? "已审批" : "Approved") : (isZh ? "待审批" : "Pending")}
-                  </span>
-                </div>
-              ))
-            )}
+            <p className="flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              {isZh ? "所有 AI 操作可审计" : "All AI actions are auditable"}
+            </p>
+            <p className="flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              {isZh ? "模型输出经过解析与校验" : "Model outputs are parsed and validated"}
+            </p>
+            <p className="flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              {isZh ? "用户配额实时追踪" : "Real-time per-user quota tracking"}
+            </p>
           </div>
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-              <span>{isZh ? "爬虫代码必须先通过沙箱测试，才可复用。" : "Crawler code must pass sandbox tests before reuse."}</span>
+              <span>{isZh ? "所有论文采集使用平台维护的标准连接器，不执行 AI 生成的代码。" : "All paper crawling uses platform-maintained standard connectors. No AI-generated code is executed."}</span>
             </div>
           </div>
         </div>
