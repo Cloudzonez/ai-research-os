@@ -77,4 +77,25 @@ setInterval(() => {
   }
 }, 300000); // every 5 minutes
 
+// Named exports for convenience
+export function getCache(key) {
+  return cache.get(key);
+}
+
+export function setCache(key, value, ttlMs) {
+  return cache.set(key, value, ttlMs);
+}
+
+export function deleteCache(key) {
+  return cache.delete(key);
+}
+
+export function clearCache() {
+  return cache.clear();
+}
+
+export function getCacheStats() {
+  return cache.stats();
+}
+
 export default cache;

@@ -58,10 +58,44 @@ const paperSchema = new mongoose.Schema(
     },
     triageReasoning: { type: String, default: null },
     triagedAt: { type: Date, default: null },
+    
+    // Seminal paper detection fields
+    citedByCount: { type: Number, default: 0 },
+    citationVelocity: { type: Number, default: null },
+    citationAgeScore: { type: Number, default: null },
+    pageRankScore: { type: Number, default: null },
+    crossFieldScore: { type: Number, default: null },
+    seminalScore: { type: Number, default: null },
+    isSeminal: { type: Boolean, default: false },
+    
+    // Citation relationships
+    references: [{ type: mongoose.Schema.Types.ObjectId, ref: "Paper" }],
+    citedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "Paper" }],
+    
+    // External IDs for cross-referencing
+    externalIds: {
+      doi: String,
+      arxiv: String,
+      pubmed: String,
+      semanticScholar: String,
+      openalex: String,
+      pmc: String,
+      philpapers: String,
+      core: String,
+    },
+    
+    // Additional metadata
+    venue: String,
+    venueType: String,
+    pdfUrl: String,
+    categories: [String],
   },
   { timestamps: true }
 );
 
 paperSchema.index({ title: "text", abstract: "text" });
+paperSchema.index({ seminalScore: -1 });
+paperSchema.index({ citedByCount: -1 });
+paperSchema.index({ isSeminal: 1 });
 
 export default mongoose.model("Paper", paperSchema);

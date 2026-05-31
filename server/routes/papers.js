@@ -3,6 +3,7 @@ import Paper from "../models/Paper.js";
 import { enqueue } from "../services/queue.js";
 import { searchArxiv } from "../services/ingestion/arxiv.js";
 import { searchOpenAlex, searchOpenAlexSimple } from "../services/ingestion/openalex.js";
+import { findRelatedPapers, extractRelationshipsForPaper, getRelationshipStats } from "../services/search/relationshipExtractor.js";
 import { downloadBatchPdfs } from "../services/pdfDownloader.js";
 import { authOptional } from "../middleware/auth.js";
 
@@ -336,6 +337,76 @@ router.post("/ingest", authOptional, async (req, res) => {
     console.error("Ingestion error:", err);
     res.status(500).json({ error: err.message });
   }
+
+/**
+ * GET /api/papers/:id/relationships
+ * Get papers with specific relationship to target paper
+ */
+router.get("/:id/relationships", authOptional, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, minConfidence, maxResults } = req.query;
+
+    if (!type) {
+      return res.status(400).json({ error: "Relationship type is required" });
+    }
+
+    const options = {
+      minConfidence: minConfidence ? parseFloat(minConfidence) : 0.5,
+      maxResults: maxResults ? parseInt(maxResults) : 20,
+    };
+
+    const relatedPapers = await findRelatedPapers(id, type, options);
+
+    res.json({
+      paperId: id,
+      relationshipType: type,
+      count: relatedPapers.length,
+      papers: relatedPapers,
+    });
+  } catch (error) {
+    console.error("Get relationships error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/papers/:id/extract-relationships
+ * Extract relationships for a paper
+ */
+router.post("/:id/extract-relationships", authOptional, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { maxCitations, skipExisting } = req.body;
+
+    const options = {
+      maxCitations: maxCitations || 50,
+      skipExisting: skipExisting !== false,
+    };
+
+    const results = await extractRelationshipsForPaper(id, options);
+
+    res.json(results);
+  } catch (error) {
+    console.error("Extract relationships error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/papers/:id/relationship-stats
+ * Get relationship statistics for a paper
+ */
+router.get("/:id/relationship-stats", authOptional, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const stats = await getRelationshipStats(id);
+    res.json(stats);
+  } catch (error) {
+    console.error("Get relationship stats error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 });
 
 export default router;

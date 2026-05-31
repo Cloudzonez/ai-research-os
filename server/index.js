@@ -15,6 +15,7 @@ import crawlerRoutes from "./routes/crawlers.js";
 import foundryRoutes from "./routes/foundry.js";
 import adminRoutes from "./routes/admin.js";
 import sessionRoutes from "./routes/sessions.js";
+import searchRoutes from "./routes/search.js";
 import User from "./models/User.js";
 
 const app = express();
@@ -38,6 +39,7 @@ app.use("/api/crawlers", crawlerRoutes);
 app.use("/api/foundry", foundryRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/sessions", sessionRoutes);
+app.use("/api/search", searchRoutes);
 
 async function seedDemoUser() {
   try {
