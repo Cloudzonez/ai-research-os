@@ -182,7 +182,7 @@ export default function ChatHistory({
   const groups = groupSessionsByDate(sessions, locale);
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1 flex-1 min-h-0">
       {/* New Chat button */}
       <button
         className="flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors w-full"
@@ -193,7 +193,7 @@ export default function ChatHistory({
       </button>
 
       {/* Session groups */}
-      <div className="mt-1 space-y-2 overflow-auto max-h-[calc(100vh-420px)]">
+      <div className="mt-1 space-y-2 overflow-auto flex-1 min-h-0">
         {groups.length === 0 && (
           <p className="px-3 py-2 text-[11px] text-muted italic">
             {isZh ? "暂无对话记录" : "No conversations yet"}

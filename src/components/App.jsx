@@ -319,7 +319,7 @@ function AppContent() {
       <Header t={t} locale={locale} switchLocale={switchLocale} theme={theme} toggleTheme={toggleTheme} onToggleContext={() => setContextOpen((v) => !v)} user={user} onLogout={logout} />
 
       <div className="flex h-[calc(100vh-56px)]">
-        <aside className="shrink-0 w-[240px] border-r border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-zinc-950/50 overflow-auto flex flex-col">
+        <aside className="shrink-0 w-[240px] border-r border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-zinc-950/50 flex flex-col h-full overflow-hidden">
           <ChatHistory
             sessions={sessions}
             activeSessionId={activeSessionId}
@@ -331,9 +331,7 @@ function AppContent() {
             onToggleShareSession={handleToggleShareSession}
             locale={locale}
           />
-          <div className="border-t border-gray-200 dark:border-white/5">
-            <Navigation activeView={activeView} setActiveView={(v) => startTransition(() => setActiveView(v))} t={t} stats={stats} tokenUsage={tokenUsage} isAdmin={isAdmin} />
-          </div>
+          <Navigation activeView={activeView} setActiveView={(v) => startTransition(() => setActiveView(v))} t={t} stats={stats} tokenUsage={tokenUsage} isAdmin={isAdmin} />
         </aside>
         <main className={cn("flex-1 min-w-0 overflow-auto transition-opacity duration-150", isPending && "opacity-60")}>
           <ErrorBoundary>
