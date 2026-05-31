@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { config } from "../config.js";
 import { dequeue, completeJob, failJob, getQueueStats } from "../services/queue.js";
 import Paper from "../models/Paper.js";
+import { buildPaperAnalysisPrompt } from "../prompts/worker.js";
 
 async function run() {
   console.log("Worker starting...");
@@ -108,11 +109,7 @@ export async function handleSummarizePaper({ paperId }, deps = {}) {
 
   // If paper has full text, do comprehensive analysis (original behavior)
   if (paper.text && paper.text.length > 200) {
-    const prompt = `Analyze this research paper text and return a JSON object with: summary (2-3 sentence academic summary), contributions (key contributions as array of strings), methods (research methods used), limitations (stated or apparent limitations).
-
-Paper text: ${paper.text.slice(0, 8000)}
-
-Return ONLY valid JSON: {"summary":"...","contributions":["..."],"methods":"...","limitations":"..."}`;
+    const prompt = buildPaperAnalysisPrompt(paper.text);
 
     const result = await chatFn([{ role: "user", content: prompt }], "en");
     const jsonMatch = result.content.match(/\{[\s\S]*\}/);

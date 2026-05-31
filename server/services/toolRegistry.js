@@ -4,6 +4,7 @@ import { enqueue } from "./queue.js";
 import { buildContextBundle } from "./contextEngine.js";
 import { getRiskLevel } from "../middleware/approval.js";
 import { authRequired } from "../middleware/auth.js";
+import { buildDraftSectionPrompt } from "../prompts/toolRegistry.js";
 
 const tools = {};
 
@@ -183,7 +184,7 @@ registerTool(
   },
   async (input) => {
     const { chat } = await import("./deepseek.js");
-    const prompt = `Write a draft ${input.section || "related work"} section for: "${input.topic}". Academic style.`;
+    const prompt = buildDraftSectionPrompt(input.section, input.topic);
     const result = await chat([{ role: "user", content: prompt }], "en");
     return { draft: result.content, tokensUsed: result.tokensUsed };
   }

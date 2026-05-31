@@ -1,5 +1,6 @@
 import { chat, parseResponse } from "../deepseek.js";
 import { config } from "../../../config.js";
+import { buildSearchPlanPrompt } from "../../prompts/searchPlan.js";
 
 export async function searchPlanToParams(naturalLanguageQuery, options = {}) {
   const {
@@ -9,25 +10,7 @@ export async function searchPlanToParams(naturalLanguageQuery, options = {}) {
 
   const providerList = (availableProviders || ["arxiv", "openalex", "semantic_scholar", "crossref"]).join(", ");
 
-  const prompt = `Convert this research query into structured search parameters: "${naturalLanguageQuery}"
-
-Available providers: ${providerList}
-
-Return ONLY valid JSON (no markdown, no explanation):
-{
-  "query": "optimized search keywords",
-  "providers": ["best matching provider names from the available list"],
-  "filters": { "yearMin": 2020, "yearMax": 2026, "type": "journal-article or null", "oaOnly": false },
-  "maxResults": 25
-}
-
-Rules:
-- Extract the core research topic as query keywords. Remove filler words like "find", "search for", "I want", "give me".
-- Choose providers based on the domain: CS/AI/math/physics/statistics → arxiv, openalex, semantic_scholar. Biomedical/medical/life science → pubmed. General → crossref, openalex.
-- Detect year ranges from phrases like "recent" (last 2 years), "last 3 years", "2023-2025", "since 2020", "after 2019".
-- Detect article type: "preprints", "journal articles", "conference papers", "reviews", "survey".
-- Default to 25 results. Only change if a specific number is mentioned.
-- Detect if user wants open access only ("free", "open access", "OA").`;
+  const prompt = buildSearchPlanPrompt(naturalLanguageQuery, providerList);
 
   try {
     const result = await chat(

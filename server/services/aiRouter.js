@@ -5,59 +5,13 @@ import { buildContextBundle, DEFAULT_TIER, MAX_CONTEXT_TOKENS } from "./contextE
 import { checkBudget, recordUsage } from "./tokenFlow.js";
 import { createApproval } from "../middleware/approval.js";
 import cache from "./cache.js";
-
-// ─── Tier-aware system prompt builders ─────────────────────────────
-
-function buildSystemPrompt(contextBundle) {
-  const { papers, tier } = contextBundle;
-  const header = `Available context papers (${papers.length} papers, tier ${tier}, ~${contextBundle.tokens} tokens):`;
-
-  const entries = papers.map((p) => {
-    let entry = `${p.title} (${p.source}, score: ${p.score})`;
-
-    // Tier 1+: abstract
-    if (tier >= 1 && p.abstract) {
-      entry += `\n--- Abstract ---\n${p.abstract}`;
-    }
-    // Tier 2+: structured summary fields
-    if (tier >= 2) {
-      if (p.summary) entry += `\n--- Summary ---\n${p.summary}`;
-      if (p.contributions) entry += `\n--- Contributions ---\n${p.contributions}`;
-      if (p.methods) entry += `\n--- Methods ---\n${p.methods}`;
-      if (p.limitations) entry += `\n--- Limitations ---\n${p.limitations}`;
-    }
-    // Tier 3+: evidence cards
-    if (tier >= 3 && p.evidenceCards && p.evidenceCards.length > 0) {
-      entry += `\n--- Evidence Cards ---\n${p.evidenceCards
-        .map((ec) => `- Claim: ${ec.claim}\n  Evidence: ${ec.evidence}`)
-        .join("\n")}`;
-    }
-    // Tier 4+: relevant text chunks
-    if (tier >= 4 && p.textChunks && p.textChunks.length > 0) {
-      entry += `\n--- Relevant Full Text Excerpts ---\n${p.textChunks
-        .map((tc) => `[Chunk ${tc.index}] ${tc.text}`)
-        .join("\n\n")}`;
-    }
-
-    return entry;
-  });
-
-  return `${header}\n\n${entries.join("\n\n")}`;
-}
-
-function buildContextSummary(contextBundle) {
-  return contextBundle.papers
-    .map((p) => {
-      let entry = `${p.title} (${p.source}, score: ${p.score})`;
-      if (p.abstract) entry += `\n--- Abstract ---\n${p.abstract}`;
-      if (p.summary && contextBundle.tier >= 2) entry += `\n--- Summary ---\n${p.summary}`;
-      if (p.contributions && contextBundle.tier >= 2) entry += `\n--- Contributions ---\n${p.contributions}`;
-      if (p.methods && contextBundle.tier >= 2) entry += `\n--- Methods ---\n${p.methods}`;
-      if (p.limitations && contextBundle.tier >= 2) entry += `\n--- Limitations ---\n${p.limitations}`;
-      return entry;
-    })
-    .join("\n\n");
-}
+import {
+  buildSystemPrompt,
+  buildContextSummary,
+  buildStreamSystemPrompt,
+  buildTrackerGenPrompt,
+  buildTrackerGenStreamPrompt,
+} from "../prompts/aiRouter.js";
 
 // ─── Escalation logic ──────────────────────────────────────────────
 
@@ -180,7 +134,7 @@ export async function routeChat(userMessage, locale, options = {}) {
 
     try {
       const trackerResult = await chat(
-        [{ role: "user", content: `Generate a research paper tracker for this topic: "${userMessage}". Return ONLY JSON: {"name":"Tracker name (max 60 chars)","keywords":["keyword1","keyword2",...],"sources":["arXiv","OpenAlex"],"signals":["signal1","signal2",...]}` }],
+        [{ role: "user", content: buildTrackerGenPrompt(userMessage) }],
         locale,
         { temperature: 0.3, maxTokens: 500 }
       );
@@ -330,7 +284,7 @@ export async function routeChatStream(userMessage, locale, options = {}) {
       [
         {
           role: "system",
-          content: `Available context papers (${contextBundle.papers.length} papers): ${contextSummary}`,
+          content: buildStreamSystemPrompt(contextBundle, contextSummary),
         },
         { role: "user", content: userMessage },
       ],
@@ -396,7 +350,7 @@ export async function routeChatStream(userMessage, locale, options = {}) {
 
     try {
       const trackerResult = await chat(
-        [{ role: "user", content: `Generate a research paper tracker for: "${userMessage}". Return ONLY JSON: {"name":"Tracker name","keywords":["kw1"],"sources":["arXiv"],"signals":["s1"]}` }],
+        [{ role: "user", content: buildTrackerGenStreamPrompt(userMessage) }],
         locale,
         { temperature: 0.3, maxTokens: 500 }
       );

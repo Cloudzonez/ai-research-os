@@ -6,6 +6,7 @@ import { searchSemanticScholar } from "./ingestion/semanticScholar.js";
 import { searchGitHubRepositories } from "./ingestion/github.js";
 import { downloadBatchPdfs } from "./pdfDownloader.js";
 import { enqueue } from "./queue.js";
+import { buildCrawlerSuggestionPrompt } from "../prompts/standardCrawler.js";
 
 const SUPPORTED_SOURCES = ["arxiv", "openalex", "semantic_scholar", "github"];
 const SOURCE_ALIASES = {
@@ -35,7 +36,7 @@ export async function suggestStandardCrawlerSpec(description, options = {}) {
     const result = await chat(
       [{
         role: "user",
-        content: `Suggest a crawler configuration for this request: "${description}". Return ONLY JSON: {"name":"short name","query":"search query","sources":["arxiv","openalex","semantic_scholar","github"],"keywords":["..."],"maxResults":10}. Use only supported sources that match the request.`,
+        content: buildCrawlerSuggestionPrompt(description),
       }],
       locale,
       { temperature: 0.2, maxTokens: 500 }
@@ -51,7 +52,7 @@ export async function suggestStandardCrawlerSpec(description, options = {}) {
 export function buildStandardCrawlerSpec(description, options = {}) {
   const parsed = parseJsonObject(options.aiText);
   const keywords = normalizeKeywords(parsed?.keywords, parsed?.query || description);
-  const inferredSources = normalizeSources(options.sources || parsed?.sources || inferSources(description));
+  const inferredSources = normalizeSources(options.sources || parsed?.sources || inferSources(description), keywords);
   const query = cleanText(parsed?.query || keywords.slice(0, 5).join(" ") || description);
 
   return {
@@ -307,12 +308,20 @@ function inferSources(description) {
   return sources.length ? sources : DEFAULT_ACADEMIC_SOURCES;
 }
 
-function normalizeSources(input) {
+function normalizeSources(input, keywords = []) {
   const values = Array.isArray(input) ? input : String(input || "").split(/[,，;；\s]+/);
   const normalized = values
     .map((source) => SOURCE_ALIASES[String(source).trim()] || String(source).trim().toLowerCase())
     .filter((source) => SUPPORTED_SOURCES.includes(source));
-  return [...new Set(normalized)].length ? [...new Set(normalized)] : DEFAULT_ACADEMIC_SOURCES;
+  let sources = [...new Set(normalized)].length ? [...new Set(normalized)] : DEFAULT_ACADEMIC_SOURCES;
+
+  const queryText = Array.isArray(keywords) ? keywords.join(" ") : "";
+  const hasChinese = /[\u4e00-\u9fff]/.test(queryText);
+  if (hasChinese && sources.every(s => s === "arxiv" || s === "semantic_scholar")) {
+    sources = [...sources, "openalex", "crossref"];
+  }
+
+  return sources;
 }
 
 function normalizeKeywords(input, fallback) {

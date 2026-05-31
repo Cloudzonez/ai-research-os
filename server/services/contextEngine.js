@@ -2,6 +2,7 @@ import Paper from "../models/Paper.js";
 import { chat as defaultChat } from "./deepseek.js";
 import { TIERS as defaultTiers, DEFAULT_TIER, MAX_CONTEXT_TOKENS, selectTierForQuery as defaultTierSelector } from "./contextTiers.js";
 import { selectRelevantChunks } from "./textChunker.js";
+import { buildRelevanceRankingPrompt } from "../prompts/contextEngine.js";
 
 const CHARS_PER_TOKEN = 3; // rough estimate
 
@@ -63,7 +64,7 @@ export async function buildContextBundle(query, options = {}) {
   if (papers.length > maxPapers && query) {
     try {
       const titles = papers.map((p, i) => `[${i}] ${p.title}`).join("\n");
-      const prompt = `Rank these papers by relevance to the query: "${query}". Return JSON: {"rankings":[index numbers by relevance, most relevant first, max ${maxPapers}]}. Only return JSON.\n\n${titles}`;
+      const prompt = buildRelevanceRankingPrompt(query, titles, maxPapers);
 
       const result = await chatFn([{ role: "user", content: prompt }], locale);
       const jsonMatch = result.content.match(/\{[\s\S]*\}/);

@@ -141,6 +141,19 @@ The Vite dev server proxies `/api/*` to `localhost:3001`.
 - **MongoDB socket file.** If MongoDB fails to start with "Failed to unlink socket
   file /tmp/mongodb-27017.sock", run `sudo rm -f /tmp/mongodb-27017.sock` first.
 - **Sudo password** is `patrick` when needed for system-level operations.
+- **VS Code Remote SSH.** This machine is accessed via VS Code Remote SSH. NEVER use
+  `pkill` or `kill $(lsof -t -i:PORT)` to free ports — this can kill the VS Code
+  server. To restart local dev servers safely, use:
+  ```bash
+  # Find only the specific PIDs
+  lsof -i:3001 -t  # backend PID
+  lsof -i:5173 -t  # frontend PID
+  kill <PID> <PID>  # kill only those two
+  ```
+  Then restart in background so the process outlives the bash tool timeout:
+  ```bash
+  NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost nohup npm run dev:all > /tmp/devserver.log 2>&1 &
+  ```
 
 ## Architecture constraints
 

@@ -2,6 +2,7 @@ import { Router } from "express";
 import Dashboard from "../models/Dashboard.js";
 import { authRequired } from "../middleware/auth.js";
 import { chat } from "../services/deepseek.js";
+import { buildDashboardPrompt } from "../prompts/dashboards.js";
 
 const router = Router();
 
@@ -52,32 +53,7 @@ router.post("/", authRequired, async (req, res) => {
     }
 
     // Generate HTML using DeepSeek
-    const prompt = locale === "zh"
-      ? `你是一个数据可视化专家。根据以下 JSON 数据生成一个完整的、美观的 HTML 仪表盘页面。要求：
-1. 使用内联 CSS（不使用外部样式表）
-2. 包含合适的图表、卡片、表格等可视化元素
-3. 使用现代设计风格（圆角、阴影、渐变）
-4. 响应式布局
-5. 只返回完整的 HTML 代码（从 <!DOCTYPE html> 开始），不要包含任何解释
-
-JSON 数据：
-${JSON.stringify(parsed, null, 2)}
-
-仪表盘标题：${name}
-描述：${description || ""}`
-
-      : `You are a data visualization expert. Generate a complete, beautiful HTML dashboard page from the following JSON data. Requirements:
-1. Use inline CSS (no external stylesheets)
-2. Include appropriate charts, cards, tables, and other visualization elements
-3. Use modern design style (rounded corners, shadows, gradients)
-4. Responsive layout
-5. Return ONLY the complete HTML code (starting with <!DOCTYPE html>), no explanations
-
-JSON data:
-${JSON.stringify(parsed, null, 2)}
-
-Dashboard title: ${name}
-Description: ${description || ""}`;
+    const prompt = buildDashboardPrompt(parsed, name, description, locale);
 
     let htmlContent = "";
     try {

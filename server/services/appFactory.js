@@ -1,5 +1,9 @@
 import { chat } from "./deepseek.js";
 import GeneratedApp from "../models/GeneratedApp.js";
+import {
+  buildAppSpecPrompt,
+  buildReactCodePrompt,
+} from "../prompts/appFactory.js";
 
 const TEMPLATES = {
   literature_roadmap: {
@@ -29,9 +33,7 @@ export async function generateAppSpec(description, locale = "zh") {
     .map(([k, v]) => `${k}: ${v.description}`)
     .join("\n");
 
-  const prompt = locale === "zh"
-    ? `分析以下科研小站需求，选择合适的模板并生成应用规格。可用模板：\n${templateList}\n\n需求：${description}\n\n返回JSON：{"template":"模板名","title":"应用标题","features":["功能1","功能2"],"dataSources":["数据源"]}`
-    : `Analyze this research app request and select a template. Available templates:\n${templateList}\n\nRequest: ${description}\n\nReturn JSON: {"template":"template name","title":"App title","features":["feature1"],"dataSources":["source"]}`;
+  const prompt = buildAppSpecPrompt(description, templateList, locale);
 
   const result = await chat([{ role: "user", content: prompt }], locale);
   const jsonMatch = result.content.match(/\{[\s\S]*\}/);
@@ -53,9 +55,7 @@ export async function generateApp(userDescription, userId, locale = "zh") {
     : "literature_roadmap";
 
   // Step 3: Generate app code (simplified - generates a React component skeleton)
-  const codePrompt = locale === "zh"
-    ? `为以下科研小站生成一个简单的React组件代码骨架：标题"${appSpec.title}"，功能：${appSpec.features?.join(", ")}。只返回JSX代码，包含基本布局即可。`
-    : `Generate a simple React component skeleton for a research app: title "${appSpec.title}", features: ${appSpec.features?.join(", ")}. Return JSX code with basic layout only.`;
+  const codePrompt = buildReactCodePrompt(appSpec, locale);
 
   const codeResult = await chat([{ role: "user", content: codePrompt }], "en");
   let code = codeResult.content;

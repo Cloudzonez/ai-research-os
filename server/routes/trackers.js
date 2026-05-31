@@ -7,6 +7,7 @@ import { chat, parseResponse } from "../services/deepseek.js";
 import { buildTrackerSpec, crawlTrackerSpec } from "../services/trackerCrawl.js";
 import { runAITriage } from "../services/aiTriage.js";
 import { createTrackerDebugLog, setActiveDebugLog, clearActiveDebugLog } from "../services/trackerDebugLog.js";
+import { buildTrackerGenPrompt } from "../prompts/trackers.js";
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.post("/generate", async (req, res) => {
       let aiText = "";
       try {
         const result = await chat(
-          [{ role: "user", content: `Generate a research paper and code tracker for this topic: "${topic}". Return only JSON: {"name":"...","keywords":[...],"sources":["arxiv","openalex","semantic_scholar","github"],"signals":["..."]}. Include "semantic_scholar" for citation/abstract-rich academic tracking. Include "github" only when repository/code tracking is useful.` }],
+          [{ role: "user", content: buildTrackerGenPrompt(topic) }],
           locale || "zh",
           { temperature: 0.2, maxTokens: 500 }
         );

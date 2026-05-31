@@ -39,7 +39,7 @@ export function buildTrackerSpec(topic, options = {}) {
   const { locale = "zh", aiText = "" } = options;
   const parsed = parseTrackerJson(aiText);
   const keywords = normalizeKeywords(parsed?.keywords, topic);
-  const sources = normalizeSources(parsed?.sources);
+  const sources = normalizeSources(parsed?.sources, keywords);
   const isZh = locale === "zh";
 
   return {
@@ -111,10 +111,10 @@ function createCrawlContext(spec, options) {
   const logger = createCrawlLogger(options.logger ?? (!options.paperStore ? console : null));
   const queueSummaries = options.queueSummaries ?? !options.paperStore;
   const enqueueSummarization = options.enqueueSummarization || enqueue;
-  const sources = normalizeSources(spec.sources);
   const keywords = Array.isArray(spec.keywords) && spec.keywords.length
     ? spec.keywords.map(String).filter(Boolean)
     : normalizeKeywords(spec.keywords, spec.name);
+  const sources = normalizeSources(spec.sources, keywords);
   const normalizedSpec = {
     ...spec,
     keywords,
@@ -552,12 +552,22 @@ function extractTerms(value) {
   return terms;
 }
 
-function normalizeSources(input) {
+function normalizeSources(input, keywords = []) {
   const rawSources = Array.isArray(input) && input.length ? input : DEFAULT_SOURCES;
   const normalized = rawSources
     .map((source) => SOURCE_ALIASES[String(source).trim()] || String(source).trim().toLowerCase())
     .filter((source) => SUPPORTED_SOURCES.includes(source));
-  return [...new Set(normalized)].length ? [...new Set(normalized)] : DEFAULT_SOURCES;
+  let sources = [...new Set(normalized)].length ? [...new Set(normalized)] : DEFAULT_SOURCES;
+
+  // If query contains Chinese text and arxiv is the only source, arxiv will return 0 results.
+  // Auto-add openalex + crossref which support Chinese-language queries.
+  const queryText = keywords.join(" ") || "";
+  const hasChinese = /[\u4e00-\u9fff]/.test(queryText);
+  if (hasChinese && sources.every(s => s === "arxiv" || s === "semantic_scholar")) {
+    sources = [...sources, "openalex", "crossref"];
+  }
+
+  return sources;
 }
 
 function normalizeSignals(input, isZh) {

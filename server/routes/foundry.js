@@ -7,6 +7,7 @@ import GeneratedScript from "../models/GeneratedScript.js";
 import AgentSpec from "../models/AgentSpec.js";
 import ToolDefinition from "../models/ToolDefinition.js";
 import ExecutableResearchObject from "../models/ExecutableResearchObject.js";
+import { buildScriptGenPrompt } from "../prompts/foundry.js";
 
 const router = Router();
 
@@ -85,7 +86,7 @@ router.post("/scripts/generate", authRequired, async (req, res) => {
     if (!description) return res.status(400).json({ error: "Description required" });
 
     const { chat } = await import("../services/deepseek.js");
-    const prompt = `Generate a ${language || "JavaScript"} script for: "${description}". Return only code, no explanations. The script should be self-contained and runnable.`;
+    const prompt = buildScriptGenPrompt(description, language);
 
     const result = await chat([{ role: "user", content: prompt }], locale || "zh");
     let code = result.content;

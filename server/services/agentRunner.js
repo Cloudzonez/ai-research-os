@@ -1,6 +1,7 @@
 import { executeTool } from "./toolRegistry.js";
 import { chat } from "./deepseek.js";
 import cache from "./cache.js";
+import { buildAgentSystemPrompt } from "../prompts/agentRunner.js";
 
 /**
  * Agent Runner - executes an agent spec against a user task.
@@ -41,12 +42,7 @@ export async function runAgent(agentSpec, userTask, options = {}) {
     // Step 2: Determine tool calls needed
     trace.state = "tool_calling";
 
-    const toolList = agentSpec.allowedTools || [];
-    const toolsAvailable = toolList.length > 0
-      ? `Available tools: ${toolList.join(", ")}`
-      : "No specific tools available.";
-
-    const systemPrompt = `${agentSpec.instructions}\n\n${toolsAvailable}\n\nWhen you need to use a tool, respond with a JSON object: {"tool":"tool_name","input":{...}}. Otherwise respond with your answer directly.`;
+    const systemPrompt = buildAgentSystemPrompt(agentSpec);
 
     const result = await chat(
       [
