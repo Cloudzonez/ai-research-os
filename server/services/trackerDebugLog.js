@@ -54,22 +54,32 @@ export function createTrackerDebugLog() {
   }
 
   function write(color, label, msg, meta) {
-    ensureDir();
-    const tsNow = now();
-    const elapsed = ((Date.now() - startedAt.getTime()) / 1000).toFixed(3);
-    const line = `${tsNow} [${elapsed}s] ${pad()}${label} ${msg}`;
-    const metaStr = meta && Object.keys(meta).length ? ` | ${JSON.stringify(meta)}` : "";
-    const fullLine = line + metaStr + "\n";
+    let line = "";
+    let metaStr = "";
+    try {
+      ensureDir();
+      const tsNow = now();
+      const elapsed = ((Date.now() - startedAt.getTime()) / 1000).toFixed(3);
+      line = `${tsNow} [${elapsed}s] ${pad()}${label} ${msg}`;
+      metaStr = meta && Object.keys(meta).length ? ` | ${JSON.stringify(meta)}` : "";
+      const fullLine = line + metaStr + "\n";
 
-    if (firstWrite) {
-      const header = `${"=".repeat(80)}\n`;
-      const headerInfo = `Tracker Crawl Debug Log\nRun ID: ${runId}\nStarted: ${startedAt.toISOString()}\nFile: ${logFile}\n${"=".repeat(80)}\n\n`;
-      fs.appendFileSync(logFile, header + headerInfo);
-      firstWrite = false;
+      if (firstWrite) {
+        const header = `${"=".repeat(80)}\n`;
+        const headerInfo = `Tracker Crawl Debug Log\nRun ID: ${runId}\nStarted: ${startedAt.toISOString()}\nFile: ${logFile}\n${"=".repeat(80)}\n\n`;
+        fs.appendFileSync(logFile, header + headerInfo);
+        firstWrite = false;
+      }
+
+      fs.appendFileSync(logFile, fullLine);
+    } catch {
+      // File I/O failed — fall through to stdout only
     }
-
-    fs.appendFileSync(logFile, fullLine);
-    process.stdout.write(`${color}${line}${colors.reset}${metaStr}\n`);
+    try {
+      process.stdout.write(`${color}${line}${colors.reset}${metaStr}\n`);
+    } catch {
+      // stdout closed — nothing to do
+    }
   }
 
   return {
@@ -126,16 +136,20 @@ export function createTrackerDebugLog() {
     /** Log an object/array dump for debugging */
     dump(label, obj) {
       const str = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
-      ensureDir();
-      const tsNow = now();
-      const elapsed = ((Date.now() - startedAt.getTime()) / 1000).toFixed(3);
-      const lines = [`${tsNow} [${elapsed}s] ${pad()}[DUMP] ${label}`];
-      for (const line of str.split("\n")) {
-        lines.push(`  ${pad()}${line}`);
+      try {
+        ensureDir();
+        const tsNow = now();
+        const elapsed = ((Date.now() - startedAt.getTime()) / 1000).toFixed(3);
+        const lines = [`${tsNow} [${elapsed}s] ${pad()}[DUMP] ${label}`];
+        for (const line of str.split("\n")) {
+          lines.push(`  ${pad()}${line}`);
+        }
+        const out = lines.join("\n") + "\n";
+        fs.appendFileSync(logFile, out);
+      } catch {
+        // File I/O failed — fall through
       }
-      const out = lines.join("\n") + "\n";
-      fs.appendFileSync(logFile, out);
-      process.stdout.write(`${colors.reset}${out.slice(0, 400)}${str.length > 400 ? "...\n" : ""}`);
+      process.stdout.write(`${colors.reset}${str.slice(0, 400)}${str.length > 400 ? "...\n" : ""}`);
     },
   };
 }
