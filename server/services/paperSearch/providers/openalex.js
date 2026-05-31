@@ -2,6 +2,7 @@ import { BaseProvider } from "../BaseProvider.js";
 import { RateLimiter } from "../rateLimiter.js";
 import { normalize } from "../normalizer.js";
 import { config } from "../../../config.js";
+import { getActiveDebugLog } from "../../trackerDebugLog.js";
 
 export class OpenAlexProvider extends BaseProvider {
   constructor(options = {}) {
@@ -60,7 +61,12 @@ export class OpenAlexProvider extends BaseProvider {
     const path = `/works?${searchParams.toString()}`;
     const data = await this._fetch(path);
     const results = (data.results || []).map((work) => this._toRawItem(work));
-    return results.map((raw) => normalize("openalex", { ...raw, _raw: raw._raw }));
+    const normalized = results.map((raw) => normalize("openalex", { ...raw, _raw: raw._raw }));
+
+    const debugLog = getActiveDebugLog();
+    if (debugLog) debugLog.detail(`[paperSearch/openalex] search() returned`, { raw: results.length, normalized: normalized.length, total: data.meta?.count || "?", query: query?.slice(0, 60) });
+
+    return normalized;
   }
 
   async getPaper(id) {

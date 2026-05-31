@@ -1,6 +1,7 @@
 import cache from "../cache.js";
 import { RateLimiter } from "./rateLimiter.js";
 import { withRetry, DEFAULT_RETRY_CONFIG } from "./retryHandler.js";
+import { getActiveDebugLog } from "../trackerDebugLog.js";
 
 export class BaseProvider {
   constructor(options = {}) {
@@ -33,15 +34,25 @@ export class BaseProvider {
   async _fetch(path, init = {}) {
     const cacheKey = this._cacheKey("fetch", path + JSON.stringify(init));
     const cached = this.cache.get(cacheKey);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      const debugLog = getActiveDebugLog();
+      if (debugLog) debugLog.detail(`[paperSearch/${this.name}] cache HIT`, { key: cacheKey });
+      return cached;
+    }
 
+    const debugLog = getActiveDebugLog();
+    if (debugLog) debugLog.begin(`[paperSearch/${this.name}] HTTP request`, { path: path.slice(0, 120) });
     await this.rateLimiter.acquire();
 
     try {
+      const t0 = Date.now();
       const result = await withRetry(() => this._doFetch(path, init), this.retryConfig);
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+      if (debugLog) debugLog.end(`[paperSearch/${this.name}] done`, { elapsedSec: elapsed });
       this.cache.set(cacheKey, result, this.cacheTtlMs);
       return result;
     } catch (err) {
+      if (debugLog) debugLog.end(`[paperSearch/${this.name}] ERROR`, { error: err.message });
       throw err;
     }
   }
@@ -51,6 +62,8 @@ export class BaseProvider {
     const headers = { ...this.defaultHeaders, ...init.headers };
     const timeoutMs = init.timeoutMs ?? this.retryConfig.timeoutMs;
 
+    const debugLog = getActiveDebugLog();
+    const t0 = Date.now();
     const res = await fetch(url, {
       ...init,
       headers,
@@ -58,6 +71,7 @@ export class BaseProvider {
     });
 
     if (!res.ok) {
+      if (debugLog) debugLog.error(`[paperSearch/${this.name}] HTTP ${res.status}`, { url: url.slice(0, 120), statusText: res.statusText });
       const err = new Error(`${this.name} API ${res.status}: ${res.statusText}`);
       err.status = res.status;
       err.headers = res.headers;
@@ -65,21 +79,33 @@ export class BaseProvider {
       throw err;
     }
 
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+    if (debugLog) debugLog.detail(`[paperSearch/${this.name}] HTTP OK`, { status: res.status, elapsedSec: elapsed });
     return res.json();
   }
 
   async _fetchText(path, init = {}) {
     const cacheKey = this._cacheKey("fetchText", path);
     const cached = this.cache.get(cacheKey);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      const debugLog = getActiveDebugLog();
+      if (debugLog) debugLog.detail(`[paperSearch/${this.name}] cache HIT (text)`, { key: cacheKey });
+      return cached;
+    }
 
+    const debugLog = getActiveDebugLog();
+    if (debugLog) debugLog.begin(`[paperSearch/${this.name}] HTTP request (text)`, { path: path.slice(0, 120) });
     await this.rateLimiter.acquire();
 
     try {
+      const t0 = Date.now();
       const result = await withRetry(() => this._doFetchText(path, init), this.retryConfig);
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+      if (debugLog) debugLog.end(`[paperSearch/${this.name}] done`, { elapsedSec: elapsed, bytes: result.length });
       this.cache.set(cacheKey, result, this.cacheTtlMs);
       return result;
     } catch (err) {
+      if (debugLog) debugLog.end(`[paperSearch/${this.name}] ERROR`, { error: err.message });
       throw err;
     }
   }
@@ -89,6 +115,8 @@ export class BaseProvider {
     const headers = { ...this.defaultHeaders, ...init.headers };
     const timeoutMs = init.timeoutMs ?? this.retryConfig.timeoutMs;
 
+    const debugLog = getActiveDebugLog();
+    const t0 = Date.now();
     const res = await fetch(url, {
       ...init,
       headers,
@@ -96,13 +124,17 @@ export class BaseProvider {
     });
 
     if (!res.ok) {
+      if (debugLog) debugLog.error(`[paperSearch/${this.name}] HTTP ${res.status} (text)`, { url: url.slice(0, 120), statusText: res.statusText });
       const err = new Error(`${this.name} API ${res.status}: ${res.statusText}`);
       err.status = res.status;
       err.headers = res.headers;
       throw err;
     }
 
-    return res.text();
+    const text = await res.text();
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+    if (debugLog) debugLog.detail(`[paperSearch/${this.name}] HTTP OK (text)`, { status: res.status, bytes: text.length, elapsedSec: elapsed });
+    return text;
   }
 
   _cacheKey(prefix, key) {

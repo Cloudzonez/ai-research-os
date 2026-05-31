@@ -1,6 +1,7 @@
 import { BaseProvider } from "../BaseProvider.js";
 import { RateLimiter } from "../rateLimiter.js";
 import { normalize } from "../normalizer.js";
+import { getActiveDebugLog } from "../../trackerDebugLog.js";
 
 export class ArxivProvider extends BaseProvider {
   constructor(options = {}) {
@@ -39,7 +40,12 @@ export class ArxivProvider extends BaseProvider {
     const path = `/query?${searchParams.toString()}`;
     const text = await this._fetchText(path);
     const papers = parseArxivAtom(text);
-    return papers.map((raw) => normalize("arxiv", { ...raw, _raw: raw._raw }));
+    const normalized = papers.map((raw) => normalize("arxiv", { ...raw, _raw: raw._raw }));
+
+    const debugLog = getActiveDebugLog();
+    if (debugLog) debugLog.detail(`[paperSearch/arxiv] search() returned`, { parsed: papers.length, normalized: normalized.length, query: query?.slice(0, 60) });
+
+    return normalized;
   }
 
   async getPaper(id) {

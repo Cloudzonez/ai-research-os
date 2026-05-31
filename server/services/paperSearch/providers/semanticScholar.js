@@ -2,6 +2,7 @@ import { BaseProvider } from "../BaseProvider.js";
 import { RateLimiter } from "../rateLimiter.js";
 import { normalize } from "../normalizer.js";
 import { config } from "../../../config.js";
+import { getActiveDebugLog } from "../../trackerDebugLog.js";
 
 const PAPER_FIELDS = [
   "title", "authors", "abstract", "year", "externalIds",
@@ -65,10 +66,15 @@ export class SemanticScholarProvider extends BaseProvider {
     const path = `/paper/search?${searchParams.toString()}`;
     const data = await this._fetch(path);
     const results = data.data || [];
-    return results.map((paper) => {
+    const normalized = results.map((paper) => {
       const raw = this._toRawItem(paper);
       return normalize("semantic_scholar", { ...raw, _raw: raw._raw });
     });
+
+    const debugLog = getActiveDebugLog();
+    if (debugLog) debugLog.detail(`[paperSearch/semanticScholar] search() returned`, { raw: results.length, normalized: normalized.length, total: data.total || "?", query: query?.slice(0, 60) });
+
+    return normalized;
   }
 
   async getPaper(id) {

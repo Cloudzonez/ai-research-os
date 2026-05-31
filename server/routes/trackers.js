@@ -6,6 +6,7 @@ import Paper from "../models/Paper.js";
 import { chat, parseResponse } from "../services/deepseek.js";
 import { buildTrackerSpec, crawlTrackerSpec } from "../services/trackerCrawl.js";
 import { runAITriage } from "../services/aiTriage.js";
+import { createTrackerDebugLog, setActiveDebugLog, clearActiveDebugLog } from "../services/trackerDebugLog.js";
 
 const router = Router();
 
@@ -32,53 +33,77 @@ router.post("/generate", async (req, res) => {
     const { topic, locale, maxResults } = req.body;
     if (!topic) return res.status(400).json({ error: "Topic required" });
 
-    let aiText = "";
+    const debugLog = createTrackerDebugLog();
+    setActiveDebugLog(debugLog);
     try {
-      const result = await chat(
-        [{ role: "user", content: `Generate a research paper and code tracker for this topic: "${topic}". Return only JSON: {"name":"...","keywords":[...],"sources":["arxiv","openalex","semantic_scholar","github"],"signals":["..."]}. Include "semantic_scholar" for citation/abstract-rich academic tracking. Include "github" only when repository/code tracking is useful.` }],
-        locale || "zh",
-        { temperature: 0.2, maxTokens: 500 }
-      );
-      aiText = parseResponse(result.content).text;
-    } catch {
-      aiText = "";
-    }
+      debugLog.section(`POST /generate: "${topic}"`);
 
-    const trackerData = buildTrackerSpec(topic, { locale: locale || "zh", aiText });
-    const crawl = await crawlTrackerSpec(trackerData, {
-      locale: locale || "zh",
-      maxResults: Number(maxResults) || 50,
-    });
-    const crawlStatus = crawl.errors.length && crawl.paperCount === 0
-      ? "failed"
-      : crawl.errors.length
-        ? "partial"
-        : "completed";
-
-    // Run AI triage on newly crawled papers
-    let triage = null;
-    if (crawl.newPaperIds && crawl.newPaperIds.length > 0) {
+      let aiText = "";
       try {
-        triage = await runAITriage(trackerData, crawl.newPaperIds, {
-          PaperModel: Paper,
-        });
+        const result = await chat(
+          [{ role: "user", content: `Generate a research paper and code tracker for this topic: "${topic}". Return only JSON: {"name":"...","keywords":[...],"sources":["arxiv","openalex","semantic_scholar","github"],"signals":["..."]}. Include "semantic_scholar" for citation/abstract-rich academic tracking. Include "github" only when repository/code tracking is useful.` }],
+          locale || "zh",
+          { temperature: 0.2, maxTokens: 500 }
+        );
+        aiText = parseResponse(result.content).text;
+        debugLog.info("AI tracker spec generated", { aiText: aiText?.slice(0, 200) });
       } catch (err) {
-        console.error("AI triage failed:", err.message);
+        debugLog.warn("AI spec generation failed, using fallback", { error: err.message });
+        aiText = "";
       }
+
+      const trackerData = buildTrackerSpec(topic, { locale: locale || "zh", aiText });
+      debugLog.info("tracker spec built", {
+        name: trackerData.name,
+        keywords: trackerData.keywords,
+        sources: trackerData.sources,
+        signals: trackerData.signals,
+      });
+
+      const crawl = await crawlTrackerSpec(trackerData, {
+        locale: locale || "zh",
+        maxResults: Number(maxResults) || 50,
+        debugLog,
+      });
+      const crawlStatus = crawl.errors.length && crawl.paperCount === 0
+        ? "failed"
+        : crawl.errors.length
+          ? "partial"
+          : "completed";
+      debugLog.info("crawl result status", { status: crawlStatus, papers: crawl.paperCount, newPapers: crawl.newPaperCount, errors: crawl.errors.length });
+
+      // Run AI triage on newly crawled papers
+      let triage = null;
+      if (crawl.newPaperIds && crawl.newPaperIds.length > 0) {
+        try {
+          debugLog.begin(`AI triage — ${crawl.newPaperIds.length} papers`);
+          triage = await runAITriage(trackerData, crawl.newPaperIds, {
+            PaperModel: Paper,
+          });
+          debugLog.end("AI triage done", { paperCount: triage?.decisions?.length || 0 });
+        } catch (err) {
+          debugLog.error("AI triage failed", { error: err.message });
+          console.error("AI triage failed:", err.message);
+        }
+      }
+
+      const tracker = await Tracker.create({
+        ...trackerData,
+        papers: crawl.paperCount,
+        subscribers: 1,
+        lastRun: new Date(),
+        crawlStatus,
+        lastCrawlQuery: crawl.query,
+        lastCrawlErrors: crawl.errors,
+        lastCrawledPaperIds: crawl.papers.map((paper) => paper._id).filter(Boolean),
+      });
+
+      debugLog.info("tracker saved to DB", { trackerId: tracker._id?.toString(), logFile: debugLog.logFile });
+
+      res.status(201).json({ tracker, crawl, papers: crawl.papers, triage });
+    } finally {
+      clearActiveDebugLog();
     }
-
-    const tracker = await Tracker.create({
-      ...trackerData,
-      papers: crawl.paperCount,
-      subscribers: 1,
-      lastRun: new Date(),
-      crawlStatus,
-      lastCrawlQuery: crawl.query,
-      lastCrawlErrors: crawl.errors,
-      lastCrawledPaperIds: crawl.papers.map((paper) => paper._id).filter(Boolean),
-    });
-
-    res.status(201).json({ tracker, crawl, papers: crawl.papers, triage });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -120,49 +145,82 @@ router.get("/:id", async (req, res) => {
 
 router.post("/:id/crawl", async (req, res) => {
   try {
-    const tracker = await Tracker.findById(req.params.id);
-    if (!tracker) return res.status(404).json({ error: "Tracker not found" });
+    const debugLog = createTrackerDebugLog();
+    setActiveDebugLog(debugLog);
+    try {
+      debugLog.section(`POST /:id/crawl — trackerId="${req.params.id}"`);
 
-    tracker.crawlStatus = "running";
-    await tracker.save();
-
-    const trackerSpec = {
-      name: tracker.name,
-      keywords: tracker.keywords,
-      sources: tracker.sources,
-      signals: tracker.signals,
-    };
-
-    const crawl = await crawlTrackerSpec(trackerSpec, {
-      locale: req.body.locale || "zh",
-      maxResults: Number(req.body.maxResults) || 50,
-    });
-
-    // Run AI triage on newly crawled papers
-    let triage = null;
-    if (crawl.newPaperIds && crawl.newPaperIds.length > 0) {
-      try {
-        triage = await runAITriage(trackerSpec, crawl.newPaperIds, {
-          PaperModel: Paper,
-        });
-      } catch (err) {
-        console.error("AI triage failed:", err.message);
+      const tracker = await Tracker.findById(req.params.id);
+      if (!tracker) {
+        debugLog.error("Tracker not found", { id: req.params.id });
+        return res.status(404).json({ error: "Tracker not found" });
       }
+
+      debugLog.info("tracker loaded", {
+        name: tracker.name,
+        keywords: tracker.keywords,
+        sources: tracker.sources,
+        existingPaperCount: tracker.papers,
+      });
+
+      tracker.crawlStatus = "running";
+      await tracker.save();
+      debugLog.info("tracker status set to 'running'");
+
+      const trackerSpec = {
+        name: tracker.name,
+        keywords: tracker.keywords,
+        sources: tracker.sources,
+        signals: tracker.signals,
+      };
+
+      const crawl = await crawlTrackerSpec(trackerSpec, {
+        locale: req.body.locale || "zh",
+        maxResults: Number(req.body.maxResults) || 50,
+        debugLog,
+      });
+
+      const crawlStatus = crawl.errors.length && crawl.paperCount === 0
+        ? "failed"
+        : crawl.errors.length
+          ? "partial"
+          : "completed";
+      debugLog.info("crawl result status", { status: crawlStatus, papers: crawl.paperCount, newPapers: crawl.newPaperCount, errors: crawl.errors.length });
+
+      // Run AI triage on newly crawled papers
+      let triage = null;
+      if (crawl.newPaperIds && crawl.newPaperIds.length > 0) {
+        try {
+          debugLog.begin(`AI triage — ${crawl.newPaperIds.length} papers`);
+          triage = await runAITriage(trackerSpec, crawl.newPaperIds, {
+            PaperModel: Paper,
+          });
+          debugLog.end("AI triage done", { paperCount: triage?.decisions?.length || 0 });
+        } catch (err) {
+          debugLog.error("AI triage failed", { error: err.message });
+          console.error("AI triage failed:", err.message);
+        }
+      }
+
+      tracker.papers = crawl.paperCount;
+      tracker.lastRun = new Date();
+      tracker.crawlStatus = crawlStatus;
+      tracker.lastCrawlQuery = crawl.query;
+      tracker.lastCrawlErrors = crawl.errors;
+      tracker.lastCrawledPaperIds = crawl.papers.map((paper) => paper._id).filter(Boolean);
+      await tracker.save();
+
+      debugLog.info("tracker saved to DB", {
+        trackerId: tracker._id?.toString(),
+        papers: tracker.papers,
+        status: tracker.crawlStatus,
+        logFile: debugLog.logFile,
+      });
+
+      res.json({ tracker, crawl, papers: crawl.papers, triage, logFile: debugLog.logFile });
+    } finally {
+      clearActiveDebugLog();
     }
-
-    tracker.papers = crawl.paperCount;
-    tracker.lastRun = new Date();
-    tracker.crawlStatus = crawl.errors.length && crawl.paperCount === 0
-      ? "failed"
-      : crawl.errors.length
-        ? "partial"
-        : "completed";
-    tracker.lastCrawlQuery = crawl.query;
-    tracker.lastCrawlErrors = crawl.errors;
-    tracker.lastCrawledPaperIds = crawl.papers.map((paper) => paper._id).filter(Boolean);
-    await tracker.save();
-
-    res.json({ tracker, crawl, papers: crawl.papers, triage });
   } catch (err) {
     console.error("[trackers] crawl error:", err.message, err.stack?.slice(0, 500));
     res.status(500).json({ error: err.message });

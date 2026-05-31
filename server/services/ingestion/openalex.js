@@ -1,16 +1,22 @@
 import { getRateLimiter } from "../rateLimiter.js";
 import { retryWithBackoff, createFetchWithRetry } from "../retryHandler.js";
 import { getRequestCache } from "../requestCache.js";
+import { getActiveDebugLog } from "../trackerDebugLog.js";
 
 const limiter = getRateLimiter("openalex", 8);
 const cache = getRequestCache("openalex", { maxSize: 200, ttlMs: 600000 });
 const fetchR = createFetchWithRetry({ maxRetries: 3, timeoutMs: 15000, context: "OpenAlex" });
 
 export async function searchOpenAlex(query, maxResults = 10, options = {}) {
+  const debugLog = getActiveDebugLog();
   const cacheKey = cache.generateKey("openalex", query, { maxResults });
   const cached = cache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    if (debugLog) debugLog.detail("[ingestion/openalex] cache HIT", { query: query.slice(0, 60), count: cached.length });
+    return cached;
+  }
 
+  if (debugLog) debugLog.begin(`[ingestion/openalex] API call`, { query: query.slice(0, 80), maxResults });
   await limiter.waitForPermission();
 
   const params = new URLSearchParams({
@@ -20,6 +26,7 @@ export async function searchOpenAlex(query, maxResults = 10, options = {}) {
   });
 
   const url = `https://api.openalex.org/works?${params.toString()}`;
+  const t0 = Date.now();
 
   const result = await retryWithBackoff(
     async () => {
@@ -27,13 +34,14 @@ export async function searchOpenAlex(query, maxResults = 10, options = {}) {
         headers: { "User-Agent": "mailto:ai-research-os@university.edu" },
       });
       if (!res.ok) {
+        if (debugLog) debugLog.error("[ingestion/openalex] HTTP failed", { status: res.status, statusText: res.statusText });
         const err = new Error(`OpenAlex API error: ${res.status}`);
         err.status = res.status;
         err.response = res;
         throw err;
       }
       const data = await res.json();
-      return (data.results || []).map((work) => ({
+      const results = (data.results || []).map((work) => ({
         title: work.title || "",
         authors: (work.authorships || []).map((a) => a.author?.display_name || ""),
         abstract: work.abstract_inverted_index
@@ -47,9 +55,16 @@ export async function searchOpenAlex(query, maxResults = 10, options = {}) {
         citedByCount: work.cited_by_count || 0,
         type: work.type || "",
       }));
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+      if (debugLog) debugLog.detail("[ingestion/openalex] HTTP response", { status: res.status, results: results.length, total: data.meta?.count || "?", elapsedSec: elapsed });
+      return results;
     },
     { context: "OpenAlex search", maxRetries: 3, initialDelayMs: 2000 }
   );
+
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+  if (debugLog) debugLog.end(`[ingestion/openalex] done`, { resultCount: result.length, elapsedSec: elapsed });
+  if (result.length === 0 && debugLog) debugLog.warn("[ingestion/openalex] returned 0 results", { query, maxResults });
 
   cache.set(cacheKey, result);
   return result;

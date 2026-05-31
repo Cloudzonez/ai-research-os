@@ -6,6 +6,7 @@ import { searchGitHubRepositories } from "./ingestion/github.js";
 import { downloadBatchPdfs } from "./pdfDownloader.js";
 import { enqueue } from "./queue.js";
 import { getSearchService } from "./paperSearch/index.js";
+import { createTrackerDebugLog, setActiveDebugLog } from "./trackerDebugLog.js";
 
 const SOURCE_ALIASES = {
   arxiv: "arxiv",
@@ -51,16 +52,21 @@ export function buildTrackerSpec(topic, options = {}) {
 }
 
 export async function crawlTrackerSpec(spec, options = {}) {
-  const context = createCrawlContext(spec, options);
+  const debugLog = options.debugLog || createTrackerDebugLog();
+  setActiveDebugLog(debugLog);
+  const context = createCrawlContext(spec, { ...options, debugLog });
   const { logger, normalizedSpec, query, sources, maxResults, locale, aiParser } = context;
 
-  logger.info("crawl_start", {
-    tracker: normalizedSpec.name,
+  debugLog.section(`Tracker Crawl Start: "${normalizedSpec.name}"`);
+  debugLog.info("crawl_start", {
+    trackerName: normalizedSpec.name,
     query,
+    keywords: normalizedSpec.keywords,
     sources,
     maxResults,
     locale,
-    aiParser: Boolean(aiParser),
+    hasAiParser: Boolean(aiParser),
+    runId: debugLog.runId,
   });
 
   const sourceData = await fetchTrackerSources(context);
@@ -68,12 +74,26 @@ export async function crawlTrackerSpec(spec, options = {}) {
   const crawledPapers = await storeParsedItems(parsedItems, context);
   const pdfResults = await downloadCrawledPdfs(crawledPapers, parsedItems, context);
 
-  return buildCrawlResult({
+  const result = buildCrawlResult({
     sourceResults: sourceData.sourceResults,
     errors: sourceData.errors,
     crawledPapers,
     pdfResults,
   }, context);
+
+  debugLog.info("crawl_complete_summary", {
+    sourcesChecked: sources.length,
+    sourcesWithErrors: sourceData.errors.length,
+    itemsCollected: sourceData.collectedItems.length,
+    itemsParsed: parsedItems.length,
+    papersReturned: crawledPapers.length,
+    newPapers: crawledPapers.filter((p) => !p.duplicate).length,
+    pdfCandidates: pdfResults?.downloaded || 0,
+    pdfErrors: pdfResults?.failed || 0,
+  });
+  debugLog.info("log_file", { path: debugLog.logFile });
+
+  return result;
 }
 
 function createCrawlContext(spec, options) {
@@ -84,9 +104,10 @@ function createCrawlContext(spec, options) {
     aiParser = null,
     aiParserOptions = {},
     pdfDownloader = downloadBatchPdfs,
+    debugLog,
   } = options;
 
-  const searchers = options.searchers || defaultSearchers(options.searchService);
+  const searchers = options.searchers || defaultSearchers(options.searchService, debugLog);
   const logger = createCrawlLogger(options.logger ?? (!options.paperStore ? console : null));
   const queueSummaries = options.queueSummaries ?? !options.paperStore;
   const enqueueSummarization = options.enqueueSummarization || enqueue;
@@ -127,44 +148,58 @@ function createCrawlContext(spec, options) {
     normalizedSpec,
     query,
     stats,
+    debugLog,
   };
 }
 
 async function fetchTrackerSources(context) {
-  const { sources, searchers, query, maxResults, logger, stats } = context;
+  const { sources, searchers, query, maxResults, logger, stats, debugLog } = context;
   const sourceResults = [];
   const errors = [];
   const collectedItems = [];
+
+  debugLog.begin(`fetchTrackerSources — query="${query}", maxResults=${maxResults}, sources=[${sources.join(", ")}]`);
 
   for (const source of sources) {
     const searcher = searchers[source];
     if (!searcher) {
       errors.push({ source, error: "Source is not supported" });
       logger.warn("source_unsupported", { source });
+      debugLog.warn(`source_unsupported: "${source}" not in searcher registry`, { availableSearchers: Object.keys(searchers) });
       continue;
     }
 
+    const t0 = Date.now();
     try {
       logger.info("source_fetch_start", { source, query, maxResults });
+      debugLog.begin(`source="${source}" — calling searcher`);
       const rawResults = await searcher(query, maxResults);
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
       const papers = Array.isArray(rawResults) ? rawResults : [];
+
       if (!Array.isArray(rawResults)) {
         logger.warn("source_result_invalid", { source, resultType: typeof rawResults });
+        debugLog.warn(`source="${source}" returned non-array: ${typeof rawResults}`);
       }
+
       sourceResults.push({ source, count: papers.length });
       logger.info("source_fetch_complete", { source, count: papers.length });
+      debugLog.end(`source="${source}" DONE`, { resultCount: papers.length, elapsedSec: elapsed });
 
       for (const rawPaper of papers) {
         if (!rawPaper.title) {
           stats.skippedMissingTitle += 1;
+          debugLog.detail(`skipped item (no title) from "${source}"`, { rawKeys: Object.keys(rawPaper).join(", ") });
           continue;
         }
         collectedItems.push(toCollectedItem(rawPaper, source));
       }
     } catch (err) {
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
       const error = errorMessage(err);
       errors.push({ source, error });
       logger.warn("source_fetch_failed", { source, error });
+      debugLog.end(`source="${source}" ERROR`, { error, elapsedSec: elapsed });
     }
   }
 
@@ -174,59 +209,75 @@ async function fetchTrackerSources(context) {
     skippedMissingTitle: stats.skippedMissingTitle,
     errors: errors.length,
   });
+  debugLog.end("fetchTrackerSources complete", {
+    collected: stats.collected,
+    skippedMissingTitle: stats.skippedMissingTitle,
+    sourceErrors: errors.length,
+  });
 
   return { sourceResults, errors, collectedItems };
 }
 
 async function parseCollectedItems(collectedItems, context) {
-  const { aiParser, aiParserOptions, normalizedSpec, locale, logger, stats } = context;
+  const { aiParser, aiParserOptions, normalizedSpec, locale, logger, stats, debugLog } = context;
 
   if (aiParser && collectedItems.length > 0) {
     const rawBatch = collectedItems.map(({ raw }) => raw);
+    debugLog.begin(`parseCollectedItems — AI parser mode, batch=${rawBatch.length}`);
     logger.info("parse_start", { mode: "ai", count: rawBatch.length });
+    const t0 = Date.now();
     const parsed = await aiParser(rawBatch, {
       ...aiParserOptions,
       spec: normalizedSpec,
     });
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
     const parsedItems = Array.isArray(parsed) ? parsed : [];
     if (!Array.isArray(parsed)) {
       logger.warn("parse_result_invalid", { resultType: typeof parsed });
     }
     stats.parsed = parsedItems.length;
     logger.info("parse_complete", { count: stats.parsed });
+    debugLog.end(`AI parse done`, { input: rawBatch.length, output: parsedItems.length, elapsedSec: elapsed });
     return parsedItems;
   }
 
   if (collectedItems.length > 0) {
+    debugLog.begin(`parseCollectedItems — normalize mode, items=${collectedItems.length}`);
     logger.info("parse_start", { mode: "normalize", count: collectedItems.length });
     const parsedItems = collectedItems.map(({ raw, source }) =>
       normalizePaper(raw, { source, spec: normalizedSpec, locale })
     );
     stats.parsed = parsedItems.length;
     logger.info("parse_complete", { count: stats.parsed });
+    debugLog.end("normalize done", { count: stats.parsed });
     return parsedItems;
   }
 
   const parsedItems = [];
   stats.parsed = parsedItems.length;
   logger.info("parse_complete", { count: stats.parsed });
+  debugLog.warn("parseCollectedItems: no items to parse");
   return parsedItems;
 }
 
 async function storeParsedItems(parsedItems, context) {
-  const { paperStore, queueSummaries, enqueueSummarization, logger, stats } = context;
+  const { paperStore, queueSummaries, enqueueSummarization, logger, stats, debugLog } = context;
   const crawledPapers = [];
   const seen = new Set();
+
+  debugLog.begin(`storeParsedItems — ${parsedItems.length} items to process`);
 
   for (const paper of parsedItems) {
     if (!paper.title) {
       stats.skippedMissingTitle += 1;
+      debugLog.detail("skipped (no title)", { source: paper.source });
       continue;
     }
 
     const identity = paperIdentity(paper);
     if (seen.has(identity)) {
       stats.duplicateInRun += 1;
+      debugLog.detail(`duplicate in this run: ${identity}`);
       continue;
     }
     seen.add(identity);
@@ -234,12 +285,26 @@ async function storeParsedItems(parsedItems, context) {
     const existing = await paperStore.findDuplicate(paper);
     if (existing) {
       stats.duplicateExisting += 1;
+      const existingId = existing._id?.toString() || "?";
+      debugLog.detail(`duplicate (already in DB): ${identity} → existing doc ${existingId}`, {
+        existingTitle: existing.title?.slice(0, 60),
+        existingSource: existing.source,
+        incomingSource: paper.source,
+      });
       crawledPapers.push({ ...toPlainPaper(existing), duplicate: true });
       continue;
     }
 
     const created = await paperStore.create(paper);
     stats.created += 1;
+    const newId = created._id?.toString() || "?";
+    debugLog.detail(`CREATED new paper: ${identity} → doc ${newId}`, {
+      title: paper.title?.slice(0, 80),
+      source: paper.source,
+      hasAbstract: Boolean(paper.abstract),
+      hasDoi: Boolean(paper.doi),
+      hasPdfUrl: Boolean(paper.pdfUrl),
+    });
     crawledPapers.push({ ...toPlainPaper(created), duplicate: false });
 
     await maybeEnqueueSummary(created, {
@@ -247,6 +312,7 @@ async function storeParsedItems(parsedItems, context) {
       enqueueSummarization,
       logger,
       stats,
+      debugLog,
     });
   }
 
@@ -258,12 +324,19 @@ async function storeParsedItems(parsedItems, context) {
     queuedSummaries: stats.queuedSummaries,
     queueErrors: stats.queueErrors,
   });
+  debugLog.end("storeParsedItems complete", {
+    created: stats.created,
+    duplicateInRun: stats.duplicateInRun,
+    duplicateExisting: stats.duplicateExisting,
+    queuedSummaries: stats.queuedSummaries,
+    queueErrors: stats.queueErrors,
+  });
 
   return crawledPapers;
 }
 
 async function maybeEnqueueSummary(created, context) {
-  const { queueSummaries, enqueueSummarization, logger, stats } = context;
+  const { queueSummaries, enqueueSummarization, logger, stats, debugLog } = context;
   if (!queueSummaries || !created._id || created.itemType === "repository") return;
 
   try {
@@ -275,20 +348,27 @@ async function maybeEnqueueSummary(created, context) {
       paperId: created._id.toString(),
       error: errorMessage(err),
     });
+    if (debugLog) debugLog.warn("summary_enqueue_failed", { paperId: created._id.toString(), error: errorMessage(err) });
   }
 }
 
 async function downloadCrawledPdfs(crawledPapers, parsedItems, context) {
-  const { pdfDownloader, logger, stats } = context;
+  const { pdfDownloader, logger, stats, debugLog } = context;
   const pdfDownloadItems = collectPdfDownloadItems(crawledPapers, parsedItems);
 
   let pdfResults = null;
   stats.pdfCandidates = pdfDownloadItems.length;
   if (pdfDownloadItems.length > 0) {
     try {
+      debugLog.begin(`PDF download — ${pdfDownloadItems.length} candidates`);
       logger.info("pdf_download_start", { count: pdfDownloadItems.length });
       pdfResults = await pdfDownloader(pdfDownloadItems);
       logger.info("pdf_download_complete", {
+        downloaded: pdfResults?.downloaded || 0,
+        skipped: pdfResults?.skipped || 0,
+        failed: pdfResults?.failed || 0,
+      });
+      debugLog.end("PDF download complete", {
         downloaded: pdfResults?.downloaded || 0,
         skipped: pdfResults?.skipped || 0,
         failed: pdfResults?.failed || 0,
@@ -305,7 +385,10 @@ async function downloadCrawledPdfs(crawledPapers, parsedItems, context) {
         count: pdfDownloadItems.length,
         error: pdfResults.error,
       });
+      debugLog.end("PDF download FAILED", { error: errorMessage(err) });
     }
+  } else {
+    debugLog.detail("PDF download: no candidates");
   }
 
   return pdfResults;
@@ -619,28 +702,41 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function defaultSearchers(searchService = getSearchService()) {
+function defaultSearchers(searchService = getSearchService(), debugLog) {
   return {
-    arxiv: createPaperSearchAdapter("arxiv", searchService, { fallback: crawlArxiv }),
-    openalex: createPaperSearchAdapter("openalex", searchService, { fallback: searchOpenAlex }),
-    semantic_scholar: createPaperSearchAdapter("semantic_scholar", searchService, { fallback: searchSemanticScholar }),
-    crossref: createPaperSearchAdapter("crossref", searchService),
-    pubmed: createPaperSearchAdapter("pubmed", searchService),
+    arxiv: createPaperSearchAdapter("arxiv", searchService, { fallback: crawlArxiv, debugLog }),
+    openalex: createPaperSearchAdapter("openalex", searchService, { fallback: searchOpenAlex, debugLog }),
+    semantic_scholar: createPaperSearchAdapter("semantic_scholar", searchService, { fallback: searchSemanticScholar, debugLog }),
+    crossref: createPaperSearchAdapter("crossref", searchService, { debugLog }),
+    pubmed: createPaperSearchAdapter("pubmed", searchService, { debugLog }),
     github: searchGitHubRepositories,
   };
 }
 
 function createPaperSearchAdapter(source, searchService, options = {}) {
-  const { fallback = null } = options;
+  const { fallback = null, debugLog } = options;
 
   return async (query, maxResults) => {
     try {
+      if (debugLog) debugLog.detail(`paperSearch adapter calling searchService.search()`, { source, query: query?.slice(0, 80), maxResults });
+      const t0 = Date.now();
       const result = await searchService.search({
         query,
         maxResults,
         providers: [source],
         deduplicate: false,
         enrich: false,
+      });
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+
+      if (debugLog) debugLog.detail(`paperSearch returned`, {
+        source,
+        results: result.results?.length || 0,
+        fetched: result.totalFetched,
+        afterDedup: result.totalAfterDedup,
+        errors: result.errors || [],
+        timingMs: result.timingMs,
+        elapsedSec: elapsed,
       });
 
       if (result.errors?.length && !result.results?.length) {
@@ -652,7 +748,14 @@ function createPaperSearchAdapter(source, searchService, options = {}) {
         source: paper.source || source,
       }));
     } catch (err) {
-      if (fallback) return fallback(query, maxResults);
+      if (fallback) {
+        if (debugLog) debugLog.warn(`paperSearch FAILED for "${source}", falling back to direct adapter`, { error: errorMessage(err) });
+        const t0 = Date.now();
+        const fbResult = await fallback(query, maxResults);
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+        if (debugLog) debugLog.detail(`fallback returned`, { source, count: fbResult?.length || 0, elapsedSec: elapsed });
+        return fbResult;
+      }
       throw err;
     }
   };

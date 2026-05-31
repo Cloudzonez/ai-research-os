@@ -7,6 +7,7 @@ import { UnpaywallProvider } from "./providers/unpaywall.js";
 import { PaperDeduplicator, deduplicateBatch } from "./deduplicator.js";
 import { rankPapers } from "./ranking.js";
 import cache from "../cache.js";
+import { getActiveDebugLog } from "../trackerDebugLog.js";
 
 const PROVIDER_REGISTRY = {
   openalex: OpenAlexProvider,
@@ -65,6 +66,7 @@ export class UnifiedPaperSearch {
   }
 
   async search(params = {}) {
+    const debugLog = getActiveDebugLog();
     const startTime = Date.now();
     const {
       query,
@@ -79,6 +81,8 @@ export class UnifiedPaperSearch {
     const providerNames = this._resolveProviders(requestedProviders);
     const perProviderCap = Math.max(5, Math.ceil(maxResults / providerNames.length));
 
+    if (debugLog) debugLog.begin(`[paperSearch] search() — query="${query?.slice(0, 80)}", providers=[${providerNames.join(",")}], cap=${perProviderCap}`);
+
     const providerResults = [];
     const allPapers = [];
     const errors = [];
@@ -87,9 +91,11 @@ export class UnifiedPaperSearch {
       const provider = this.providers[name];
       if (!provider) {
         errors.push({ provider: name, error: "Provider unavailable" });
+        if (debugLog) debugLog.warn(`[paperSearch] provider unavailable: "${name}"`, { available: Object.keys(this.providers) });
         return;
       }
 
+      const t0 = Date.now();
       try {
         const results = await Promise.race([
           provider.search({ query, maxResults: perProviderCap, filters }),
@@ -97,11 +103,15 @@ export class UnifiedPaperSearch {
             setTimeout(() => reject(new Error(`Timeout after ${timeoutPerProvider}ms`)), timeoutPerProvider)
           ),
         ]);
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
         providerResults.push({ provider: name, count: results.length, errors: [] });
+        if (debugLog) debugLog.detail(`[paperSearch] provider="${name}" done`, { count: results.length, elapsedSec: elapsed });
         for (const paper of results) allPapers.push(paper);
       } catch (err) {
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
         providerResults.push({ provider: name, count: 0, errors: [err.message] });
         errors.push({ provider: name, error: err.message });
+        if (debugLog) debugLog.warn(`[paperSearch] provider="${name}" FAILED`, { error: err.message, elapsedSec: elapsed });
       }
     });
 
@@ -114,11 +124,13 @@ export class UnifiedPaperSearch {
       const batchResult = deduplicateBatch(allPapers);
       deduplicated = batchResult.unique;
       duplicateCount = batchResult.duplicates.length;
+      if (debugLog) debugLog.detail(`[paperSearch] dedup batch`, { before: allPapers.length, after: deduplicated.length, removed: duplicateCount });
 
       if (this.paperStore) {
         const dbResult = await this.deduplicator.deduplicate(deduplicated);
         deduplicated = dbResult.unique;
         duplicateCount += dbResult.duplicates.length;
+        if (debugLog) debugLog.detail(`[paperSearch] dedup against DB`, { remaining: deduplicated.length, dbDups: dbResult.duplicates.length });
       }
     } else {
       deduplicated = allPapers;
@@ -137,6 +149,15 @@ export class UnifiedPaperSearch {
       return clean;
     });
 
+    const totalTimingMs = Date.now() - startTime;
+    if (debugLog) debugLog.end(`[paperSearch] search() complete`, {
+      providers: providerNames.length,
+      fetched: allPapers.length,
+      afterDedup: sanitized.length,
+      totalErrors: errors.length,
+      timingMs: totalTimingMs,
+    });
+
     return {
       results: sanitized,
       providerResults,
@@ -144,7 +165,7 @@ export class UnifiedPaperSearch {
       totalAfterDedup: sanitized.length,
       duplicatesRemoved: duplicateCount,
       errors,
-      timingMs: Date.now() - startTime,
+      timingMs: totalTimingMs,
     };
   }
 

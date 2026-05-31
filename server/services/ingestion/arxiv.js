@@ -1,6 +1,7 @@
 import { getRateLimiter } from "../rateLimiter.js";
 import { retryWithBackoff } from "../retryHandler.js";
 import { getRequestCache } from "../requestCache.js";
+import { getActiveDebugLog } from "../trackerDebugLog.js";
 
 const limiter = getRateLimiter("arxiv", 0.33);
 const cache = getRequestCache("arxiv", { maxSize: 200, ttlMs: 600000 });
@@ -54,6 +55,8 @@ async function fetchArxivApi(query, maxResults = 10) {
   });
 
   const url = `http://export.arxiv.org/api/query?${params.toString()}`;
+  const debugLog = getActiveDebugLog();
+  const t0 = Date.now();
 
   return retryWithBackoff(
     async () => {
@@ -64,18 +67,25 @@ async function fetchArxivApi(query, maxResults = 10) {
           headers: { Accept: "application/atom+xml" },
           signal: controller.signal,
         });
+        clearTimeout(timeout);
         if (res.status === 429 || res.status === 503) {
+          if (debugLog) debugLog.warn("[ingestion/arxiv] HTTP error", { status: res.status, retrying: true });
           const err = new Error(`arXiv API ${res.status}`);
           err.status = res.status;
           err.response = res;
           throw err;
         }
         if (!res.ok) {
+          if (debugLog) debugLog.error("[ingestion/arxiv] HTTP failed", { status: res.status, statusText: res.statusText });
           throw new Error(`arXiv API error: ${res.status} ${res.statusText}`);
         }
-        return await res.text();
-      } finally {
+        const text = await res.text();
+        const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+        if (debugLog) debugLog.detail("[ingestion/arxiv] HTTP response", { status: res.status, bytes: text.length, elapsedSec: elapsed, url: url.slice(0, 120) });
+        return text;
+      } catch (e) {
         clearTimeout(timeout);
+        throw e;
       }
     },
     { context: "arXiv API", maxRetries: 2, initialDelayMs: 5000, maxDelayMs: 30000 }
@@ -83,14 +93,24 @@ async function fetchArxivApi(query, maxResults = 10) {
 }
 
 export async function searchArxiv(query, maxResults = 10, options = {}) {
+  const debugLog = getActiveDebugLog();
   const cacheKey = cache.generateKey("arxiv", query, { maxResults });
   const cached = cache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    if (debugLog) debugLog.detail("[ingestion/arxiv] cache HIT", { query: query.slice(0, 60), count: cached.length });
+    return cached;
+  }
 
+  if (debugLog) debugLog.begin(`[ingestion/arxiv] API call`, { query: query.slice(0, 80), maxResults });
   await limiter.waitForPermission();
 
+  const t0 = Date.now();
   const xml = await fetchArxivApi(query, maxResults);
   const results = parseAtomResponse(xml);
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+
+  if (debugLog) debugLog.end(`[ingestion/arxiv] done`, { resultCount: results.length, elapsedSec: elapsed });
+  if (results.length === 0 && debugLog) debugLog.warn("[ingestion/arxiv] returned 0 results", { query, maxResults });
 
   cache.set(cacheKey, results);
   return results;
