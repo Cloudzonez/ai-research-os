@@ -142,20 +142,22 @@ The Vite dev server proxies `/api/*` to `localhost:3001`.
   file /tmp/mongodb-27017.sock", run `sudo rm -f /tmp/mongodb-27017.sock` first.
 - **Sudo password** is `patrick` when needed for system-level operations.
 - **VS Code Remote SSH.** This machine is accessed via VS Code Remote SSH. NEVER use
-  `pkill`, `killall`, `fuser -k`, or `kill $(lsof -t -i:PORT)` to free ports —
-  this can kill the VS Code server, SSH session, or other critical processes.
-  The approved restart procedure uses the dedicated `dev` tmux session:
+  `pkill`, `killall`, `fuser -k`, `kill $(lsof -t -i:PORT)`, or `kill <PID>` to
+  stop processes — even killing specific PIDs can trigger VS Code reconnect since
+  the dev server processes are in the VS Code server's process tree.
+  The approved restart procedure sends Ctrl+C within the dedicated `dev` tmux session:
   ```bash
-  # 1. Find only the PIDs belonging to the dev server in the tmux session
-  DEV_PIDS=$(tmux capture-pane -t dev -p -S -20 | grep -oP '(?<=node-Main\s)\d+' | sort -u)
-  # 2. Kill only those PIDs
-  kill $DEV_PIDS 2>/dev/null
-  # 3. Recreate the tmux session with dev:all
-  tmux kill-session -t dev 2>/dev/null
+  # Restart: send Ctrl+C to stop gracefully, then start fresh
+  tmux send-keys -t dev C-c
+  sleep 1
+  tmux send-keys -t dev "NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npm run dev:all 2>&1 | tee /tmp/dev-all.log" Enter
+  ```
+  To view logs: `tmux capture-pane -t dev -p | tail -20`
+  If the session doesn't exist, create it:
+  ```bash
   tmux new-session -d -s dev -c /home/philo/Documents/code/AI_Research \
     "NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npm run dev:all 2>&1 | tee /tmp/dev-all.log"
   ```
-  To view logs: `tmux capture-pane -t dev -p | tail -20`
 
 ## Architecture constraints
 
