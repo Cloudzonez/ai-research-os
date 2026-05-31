@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ArrowRight, Layers3, Bot, CheckCircle2, Route, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
 import routeTemplates from "../data/routeTemplates.js";
+import Markdown from "./Markdown.jsx";
 
 function formatTokens(n) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
@@ -14,7 +15,7 @@ export default function MessageCard({ message, t, locale, setActiveView, papers 
     return (
       <div className="flex justify-end mb-4 animate-fade-in">
         <div className="max-w-[75%] rounded-2xl rounded-br-md bg-emerald-600 text-white px-4 py-3">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
+          <Markdown>{message.text}</Markdown>
         </div>
       </div>
     );
@@ -38,7 +39,7 @@ export default function MessageCard({ message, t, locale, setActiveView, papers 
           <Bot className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
         </div>
         <div className="flex-1 min-w-0 space-y-3">
-          <p className="text-sm leading-relaxed text-dull whitespace-pre-wrap">{message.text}</p>
+          <Markdown>{message.text}</Markdown>
 
           <div className="surface p-4 space-y-3">
             <div className="flex items-center gap-2 text-[13px] font-medium text-main">

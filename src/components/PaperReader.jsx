@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import api from "../utils/api.js";
 import { cn } from "../utils/cn.js";
+import Markdown from "./Markdown.jsx";
 
 // Card for a single paper with TL;DR always visible.
 // Absorbed from Daily-arXiv's paper card + detail modal UX pattern.
@@ -57,15 +58,15 @@ export function PaperCard({ paper, t, locale, onSelect, onAnalyzeInChat }) {
       {hasAI ? (
         <div className="mt-2 rounded-md bg-gradient-to-r from-indigo-50 to-purple-50 p-2.5 border-l-2 border-indigo-400">
           <p className="text-xs font-medium text-indigo-600 mb-0.5">{t.tldr}</p>
-          <p className="text-xs text-slate-700 leading-relaxed line-clamp-3">
-            {paper.aiSummary.tldr}
-          </p>
+          <div className="text-xs text-slate-700 leading-relaxed line-clamp-3">
+            <Markdown>{paper.aiSummary.tldr}</Markdown>
+          </div>
         </div>
       ) : (
         <div className="mt-2 rounded-md bg-muted/50 p-2.5">
-          <p className="text-xs text-muted-foreground line-clamp-2">
-            {paper.abstract || paper.summary || t.noAISummary}
-          </p>
+          <div className="text-xs text-muted-foreground line-clamp-2">
+            <Markdown>{paper.abstract || paper.summary || t.noAISummary}</Markdown>
+          </div>
         </div>
       )}
 
@@ -278,7 +279,7 @@ function Section({ label, content }) {
   return (
     <div>
       <h4 className="text-xs font-semibold text-slate-600">{label}</h4>
-      <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{content}</p>
+      <Markdown className="text-xs text-slate-600">{content}</Markdown>
     </div>
   );
 }
@@ -358,7 +359,9 @@ export function PaperModal({ paper, t, locale, onClose, onAnalyzeInChat }) {
           {ai.tldr && (
             <div className="rounded-lg bg-gradient-to-r from-indigo-50 to-purple-50 p-4 border-l-4 border-indigo-400">
               <p className="text-xs font-semibold text-indigo-600 mb-1">{t.tldr}</p>
-              <p className="text-sm text-slate-800 leading-relaxed">{ai.tldr}</p>
+              <div className="text-sm text-slate-800 leading-relaxed">
+                <Markdown>{ai.tldr}</Markdown>
+              </div>
             </div>
           )}
 
@@ -374,12 +377,12 @@ export function PaperModal({ paper, t, locale, onClose, onAnalyzeInChat }) {
 
           {/* Original abstract */}
           {(paper.abstract || paper.summary) && (
-            <details className="text-sm">
-              <summary className="cursor-pointer text-indigo-600 font-medium">{t.originalAbstract}</summary>
-              <p className="mt-2 text-muted-foreground leading-relaxed italic">
-                {paper.abstract || paper.summary}
-              </p>
-            </details>
+              <details className="text-sm">
+                <summary className="cursor-pointer text-indigo-600 font-medium">{t.originalAbstract}</summary>
+                <div className="mt-2 text-muted-foreground leading-relaxed italic">
+                  <Markdown>{paper.abstract || paper.summary}</Markdown>
+                </div>
+              </details>
           )}
 
           {/* No AI analysis state */}
@@ -446,7 +449,7 @@ function ModalSection({ label, icon, content }) {
         {icon && <span className="mr-1.5">{icon}</span>}
         {label}
       </h4>
-      <p className="text-sm text-slate-600 leading-relaxed mt-1">{content}</p>
+      <Markdown className="text-sm text-slate-600">{content}</Markdown>
     </div>
   );
 }

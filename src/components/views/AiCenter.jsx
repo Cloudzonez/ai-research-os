@@ -4,6 +4,7 @@ import MessageCard from "../MessageCard.jsx";
 import quickPrompts from "../../data/quickPrompts.js";
 import { EmptyState, Skeleton } from "../LoadingStates.jsx";
 import { api } from "../../utils/api.js";
+import Markdown from "../Markdown.jsx";
 
 export default function AiCenter({ t, locale, input, setInput, submit: parentSubmit, messages, setActiveView, papers, isLoading, addToast, setMessages, setTrackers, setDraft }) {
   const ref = useRef(null);
@@ -163,17 +164,18 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
 
                       {/* Streaming text */}
                       <div className="surface p-4">
-                        <p className="text-sm leading-relaxed text-dull whitespace-pre-wrap">
-                          {streamingMsg.text || (
-                            <span className="inline-flex items-center gap-1 text-muted">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              {isZh ? "思考中..." : "Thinking..."}
-                            </span>
-                          )}
-                          {streamingMsg.text && (
-                            <span className="inline-block w-1.5 h-4 bg-emerald-500 ml-0.5 animate-pulse align-text-bottom" />
-                          )}
-                        </p>
+                        <Markdown>
+                          {streamingMsg.text || ""}
+                        </Markdown>
+                        {!streamingMsg.text && (
+                          <span className="inline-flex items-center gap-1 text-muted text-sm">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            {isZh ? "思考中..." : "Thinking..."}
+                          </span>
+                        )}
+                        {streamingMsg.text && (
+                          <span className="inline-block w-1.5 h-4 bg-emerald-500 ml-0.5 animate-pulse align-text-bottom" />
+                        )}
                       </div>
                     </div>
                   </div>

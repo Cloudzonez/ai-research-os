@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { ArrowUp, Bot, Loader2, CheckCircle2, Layers3, Wrench } from "lucide-react";
 import { api } from "../utils/api.js";
+import Markdown from "./Markdown.jsx";
 
 export default function PaperChat({ t, locale, paperId, addToast, presetMessage, onConsumed }) {
   const ref = useRef(null);
@@ -120,8 +121,14 @@ export default function PaperChat({ t, locale, paperId, addToast, presetMessage,
                     <Bot className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                 )}
-                <div className={`text-sm leading-relaxed whitespace-pre-wrap max-w-[85%] px-3 py-2 rounded-xl ${msg.role === "user" ? "bg-emerald-500 text-white rounded-br-md" : "surface"}`}>
-                  <p className={msg.role === "user" ? "text-white" : "text-dull"}>{msg.text}</p>
+                <div className={`text-sm leading-relaxed max-w-[85%] px-3 py-2 rounded-xl ${msg.role === "user" ? "bg-emerald-500 text-white rounded-br-md" : "surface"}`}>
+                  {msg.role === "user" ? (
+                    <p className="text-white whitespace-pre-wrap">{msg.text}</p>
+                  ) : (
+                    <div className="markdown-chat">
+                      <Markdown>{msg.text}</Markdown>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -147,17 +154,18 @@ export default function PaperChat({ t, locale, paperId, addToast, presetMessage,
                     </div>
                   )}
                   <div className="surface p-3">
-                    <p className="text-sm leading-relaxed text-dull whitespace-pre-wrap">
-                      {streamingMsg.text || (
-                        <span className="inline-flex items-center gap-1 text-muted">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          {isZh ? "思考中..." : "Thinking..."}
-                        </span>
-                      )}
-                      {streamingMsg.text && (
-                        <span className="inline-block w-1.5 h-4 bg-emerald-500 ml-0.5 animate-pulse align-text-bottom" />
-                      )}
-                    </p>
+                    <Markdown>
+                      {streamingMsg.text || ""}
+                    </Markdown>
+                    {!streamingMsg.text && (
+                      <span className="inline-flex items-center gap-1 text-muted text-sm">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {isZh ? "思考中..." : "Thinking..."}
+                      </span>
+                    )}
+                    {streamingMsg.text && (
+                      <span className="inline-block w-1.5 h-4 bg-emerald-500 ml-0.5 animate-pulse align-text-bottom" />
+                    )}
                   </div>
                 </div>
               </div>
