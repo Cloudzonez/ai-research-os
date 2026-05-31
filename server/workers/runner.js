@@ -172,8 +172,4 @@ Return ONLY valid JSON: {"summary":"...","contributions":["..."],"methods":"..."
   return { paperId, status: "summarized", hasHtml: !!paper.htmlPage };
 }
 
-// Only auto-start when running as the main worker process (not when imported for tests)
-const isMainModule = process.argv[1] && (process.argv[1].endsWith("runner.js") || process.argv[1].endsWith("runner"));
-if (isMainModule || process.env.START_WORKER === "1") {
-  run();
-}
+run();
