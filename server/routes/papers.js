@@ -137,8 +137,8 @@ router.post("/upload", authOptional, async (req, res) => {
             source: "PDF",
             area: locale === "zh" ? "教师上传" : "Teacher upload",
             score: 82,
-            sharing: "school",
-            tags: locale === "zh" ? ["解析中", "院系共享", "待摘要"] : ["Parsing", "School shared", "Pending summary"],
+            sharing: "private",
+            tags: locale === "zh" ? ["解析中", "私有", "待摘要"] : ["Parsing", "Private", "Pending summary"],
             status: "parsing",
           })
         )
@@ -182,8 +182,8 @@ router.post("/upload", authOptional, async (req, res) => {
           source: "PDF",
           area: locale === "zh" ? "教师上传" : "Teacher upload",
           score: 82,
-          sharing: "school",
-          tags: locale === "zh" ? ["解析中", "院系共享"] : ["Parsing", "School shared"],
+          sharing: "private",
+          tags: locale === "zh" ? ["解析中", "私有"] : ["Parsing", "Private"],
           status: text ? "parsed" : "error",
           text,
           pdfPath,

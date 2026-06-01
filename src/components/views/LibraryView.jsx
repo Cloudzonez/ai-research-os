@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Upload, Share2, Bookmark, ExternalLink, Search, ChevronLeft, ChevronRight, Trash2, Loader2 } from "lucide-react";
+import { Upload, Share2, Bookmark, ExternalLink, Search, ChevronLeft, ChevronRight, Trash2, Loader2, Users, Lock, Building2, Globe } from "lucide-react";
 import { CardSkeleton, EmptyState, ErrorDisplay } from "../LoadingStates.jsx";
 import { sharingLabel } from "../../utils/sharingLabel.js";
 import { api } from "../../utils/api.js";
@@ -49,6 +49,20 @@ export default function LibraryView({ t, onUpload, onSelectPaper, error, refresh
     finally { setDeleting(null); }
   };
 
+  const handleSharingChange = async (paperId, newSharing) => {
+    try {
+      await api.updatePaper(paperId, { sharing: newSharing });
+      setPapers((prev) => prev.map((p) => (p._id === paperId ? { ...p, sharing: newSharing } : p)));
+    } catch { /* ignore */ }
+  };
+
+  const sharingOptions = [
+    { value: "school", label: t.schoolShared, icon: Building2 },
+    { value: "private", label: t.private, icon: Lock },
+    { value: "project", label: t.projectShared, icon: Users },
+    { value: "university", label: t.universityShared, icon: Globe },
+  ];
+
   if (error) return <ErrorDisplay message={error} />;
 
   return (
@@ -87,7 +101,16 @@ export default function LibraryView({ t, onUpload, onSelectPaper, error, refresh
                 </div>
                 <div className="flex flex-col items-end gap-1.5 shrink-0">
                   <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">{paper.score}</span>
-                  <span className="badge">{sharingLabel(t, paper.sharing)}</span>
+                  <select
+                    className="badge cursor-pointer text-xs bg-transparent border border-gray-200 dark:border-white/10 rounded px-1.5 py-0.5 appearance-none text-center"
+                    value={paper.sharing || "school"}
+                    onChange={(e) => { e.stopPropagation(); handleSharingChange(paper._id || paper.title, e.target.value); }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {sharingOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
                   <button
                     className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-500 transition-all"
                     onClick={(e) => { e.stopPropagation(); handleDelete(paper._id || paper.title); }}
