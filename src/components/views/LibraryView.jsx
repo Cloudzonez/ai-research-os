@@ -5,7 +5,7 @@ import { sharingLabel } from "../../utils/sharingLabel.js";
 import { api } from "../../utils/api.js";
 
 export default function LibraryView({ t, onUpload, onSelectPaper, error, refreshPapers }) {
-  const [papers, setPapers] = useState(initialPapers);
+  const [papers, setPapers] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
