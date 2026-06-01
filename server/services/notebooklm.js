@@ -7,7 +7,12 @@ import { config } from "../config.js";
 // If Google fails → the caller aborts local persistence → error shown to user.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE_URL = `https://notebooklm.googleapis.com/v1/projects/${config.notebooklmProjectId}/locations/global`;
+/**
+ * Computes the Google Cloud NotebookLM project API base URL dynamically.
+ */
+function getBaseUrl() {
+  return `https://notebooklm.googleapis.com/v1/projects/${config.notebooklmProjectId}/locations/global`;
+}
 
 /**
  * Build the Authorization header using the configured API key.
@@ -37,7 +42,7 @@ export async function createWorkspace(title) {
     throw new Error("NotebookLM API is disabled. Set NOTEBOOKLM_API_ENABLED=true in .env.");
   }
 
-  const res = await fetch(`${BASE_URL}/notebooks`, {
+  const res = await fetch(`${getBaseUrl()}/notebooks`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ displayName: title }),
@@ -70,7 +75,7 @@ export async function uploadSource(workspaceId, source) {
     throw new Error("NotebookLM API is disabled.");
   }
 
-  const res = await fetch(`${BASE_URL}/notebooks/${workspaceId}/sources`, {
+  const res = await fetch(`${getBaseUrl()}/notebooks/${workspaceId}/sources`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
@@ -102,7 +107,7 @@ export async function deleteSource(workspaceId, googleSourceId) {
   if (!config.notebooklmEnabled) return;
 
   const res = await fetch(
-    `${BASE_URL}/notebooks/${workspaceId}/sources/${googleSourceId}`,
+    `${getBaseUrl()}/notebooks/${workspaceId}/sources/${googleSourceId}`,
     {
       method: "DELETE",
       headers: authHeaders(),
@@ -135,7 +140,7 @@ export async function chatWithSources(workspaceId, query, history = []) {
   }));
   messages.push({ role: "user", parts: [{ text: query }] });
 
-  const res = await fetch(`${BASE_URL}/notebooks/${workspaceId}:generateGroundedContent`, {
+  const res = await fetch(`${getBaseUrl()}/notebooks/${workspaceId}:generateGroundedContent`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ contents: messages }),
@@ -222,7 +227,7 @@ export async function generateArtifact(workspaceId, type, sources, chatFn) {
 export async function deleteWorkspace(workspaceId) {
   if (!config.notebooklmEnabled) return;
 
-  const res = await fetch(`${BASE_URL}/notebooks/${workspaceId}`, {
+  const res = await fetch(`${getBaseUrl()}/notebooks/${workspaceId}`, {
     method: "DELETE",
     headers: authHeaders(),
     signal: AbortSignal.timeout(15000),
