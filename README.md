@@ -203,6 +203,9 @@ ai-research-os/
 │   │   ├── LoadingStates.jsx     # Skeleton & empty state components
 │   │   └── views/
 │   │       ├── AiCenter.jsx      # Main AI chat view with streaming
+│   │       ├── NotebooksView.jsx # Notebooks coordinator view
+│   │       ├── NotebooksHomeView.jsx # Featured & recent notebooks grid
+│   │       ├── NotebookDetailView.jsx # 3-panel grounded workspace & studio
 │   │       ├── LibraryView.jsx   # Paper library management
 │   │       ├── TrackersView.jsx  # Research trackers
 │   │       ├── WritingView.jsx   # AI writing assistant
@@ -222,6 +225,7 @@ ai-research-os/
 │   │   └── approval.js           # Action logging/approval
 │   ├── models/                   # Mongoose models
 │   │   ├── User.js               # User accounts
+│   │   ├── Notebook.js           # Isolated NotebookLM workspaces schema
 │   │   ├── Paper.js              # Research papers
 │   │   ├── PaperRelationship.js  # Paper-to-paper relationships
 │   │   ├── Patent.js             # Patent records
@@ -232,6 +236,7 @@ ai-research-os/
 │   ├── routes/
 │   │   ├── chat.js               # Chat endpoints (streaming SSE + REST)
 │   │   ├── auth.js               # Authentication routes
+│   │   ├── notebooks.js          # Synchronous Notebooks sync API (Express)
 │   │   ├── papers.js             # Paper library management
 │   │   ├── search.js             # Discovery & search endpoints
 │   │   ├── sessions.js           # Chat session management
@@ -242,6 +247,7 @@ ai-research-os/
 │   │   └── health.js             # Health check endpoint
 │   ├── services/
 │   │   ├── aiRouter.js           # AI intent routing & streaming
+│   │   ├── notebooklm.js         # NotebookLM Cloud Sync Engine client
 │   │   ├── deepseek.js           # DeepSeek API client
 │   │   ├── researchExtractor.js  # AI-powered research intent extraction
 │   │   ├── contextEngine.js      # Context building engine
@@ -294,9 +300,9 @@ ai-research-os/
 │   └── remote.example.env        # Production environment template
 │
 ├── vite.config.js                # Vite config with API proxy
-├── tailwind.config.js            # Tailwind configuration
-├── ecosystem.config.cjs          # PM2 configuration
-└── package.json                  # Dependencies & scripts
+│   ├── tailwind.config.js        # Tailwind configuration
+│   ├── ecosystem.config.cjs      # PM2 configuration
+│   └── package.json              # Dependencies & scripts
 ```
 
 ---
