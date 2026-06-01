@@ -66,12 +66,12 @@ function AppContent() {
     if (!user) return;
     (async () => {
       try {
-        const [p, trks, dbs, h, sess] = await Promise.all([
+        const [pRes, trksRes, dbs, h, sess] = await Promise.all([
           api.fetchPapers(), api.fetchTrackers(), api.fetchDashboards(),
           api.healthCheck(), api.getSessions(),
         ]);
-        setPapers(p);
-        setTrackers(trks);
+        setPapers(pRes.papers || pRes || []);
+        setTrackers(trksRes.trackers || trksRes || []);
         setDashboards(dbs);
         setHealth(h);
         setSessions(sess);
