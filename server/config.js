@@ -23,6 +23,12 @@ export const config = {
   deepseekApiKey: process.env.DEEPSEEK_API_KEY || "",
   deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1",
   model: process.env.MODEL_NAME || "deepseek-v4-pro",
+
+  // Google NotebookLM Enterprise API
+  notebooklmEnabled: process.env.NOTEBOOKLM_API_ENABLED === "true",
+  notebooklmProjectId: process.env.NOTEBOOKLM_PROJECT_ID || "",
+  notebooklmApiKey: process.env.NOTEBOOKLM_API_KEY || "",
+  googleAppCredentials: process.env.GOOGLE_APPLICATION_CREDENTIALS || "",
   
   // Task-specific model routing
   chatModel: process.env.CHAT_MODEL || process.env.MODEL_NAME || "deepseek-v4-pro",

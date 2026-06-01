@@ -18,9 +18,11 @@ import FoundryView from "./views/FoundryView.jsx";
 import PaperDetailView from "./views/PaperDetailView.jsx";
 import ProfileView from "./views/ProfileView.jsx";
 import AdminDashboardView from "./views/AdminDashboardView.jsx";
+import NotebooksView from "./views/NotebooksView.jsx";
 
 const VIEWS = {
   ai: AiCenter,
+  notebooks: NotebooksView,
   trackers: TrackersView,
   library: LibraryView,
   writing: WritingView,
@@ -314,10 +316,11 @@ function AppContent() {
   useEffect(() => {
     const handler = (e) => {
       if (e.ctrlKey || e.metaKey) {
-        const map = { "1": "ai", "2": "trackers", "3": "library", "4": "writing" };
+        const map = { "1": "ai", "2": "notebooks", "3": "trackers", "4": "library", "5": "writing" };
         if (map[e.key]) { e.preventDefault(); handleSetActiveView(map[e.key]); }
-        if (e.key === "5" && isAdmin) { e.preventDefault(); handleSetActiveView("governance"); }
-        if (e.key === "6" && isAdmin) { e.preventDefault(); handleSetActiveView("foundry"); }
+        if (e.key === "6" && isAdmin) { e.preventDefault(); handleSetActiveView("governance"); }
+        if (e.key === "7" && isAdmin) { e.preventDefault(); handleSetActiveView("foundry"); }
+        if (e.key === "8" && isAdmin) { e.preventDefault(); handleSetActiveView("admin"); }
         if (e.key === "k") { e.preventDefault(); document.querySelector("textarea")?.focus(); }
       }
     };
@@ -342,6 +345,7 @@ function AppContent() {
   const ActiveView = VIEWS[activeView] || VIEWS.ai;
   const vp = {
     ai:          { t, locale, input, setInput, messages, setMessages, setTrackers, setCrawlers, setDraft, setActiveView: handleSetActiveView, papers, addToast, activeSessionId, onNewChat: handleNewChat, refreshSessionTitle, sessions, onSelectSession: handleSelectSession, onRenameSession: handleRenameSession, onDeleteSession: handleDeleteSession, onToggleMarkSession: handleToggleMarkSession, onToggleShareSession: handleToggleShareSession },
+    notebooks:   { t, locale, addToast, papers },
     trackers:    { t, trackers, setTrackers, setInput, setActiveView: handleSetActiveView, locale, isLoading: false, error: errors.trackers, addToast },
     library:     { t, locale, papers, onUpload: handleUpload, onSelectPaper: handleSelectPaper, isLoading: isLoading.upload, error: errors.papers, addToast },
     writing:     { t, draft, setDraft, locale, onGenerateDraft: handleGenerateDraft, isLoading: isLoading.draft, error: errors.writing },
@@ -376,7 +380,7 @@ function AppContent() {
       <ContextPanel t={t} papers={papers} trackers={trackers} health={health} crawlers={crawlers} open={contextOpen} onClose={() => setContextOpen(false)} />
 
       <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/5 rounded-full px-3 py-1.5 text-[10px] text-muted shadow-lg">
-        <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-dull">Ctrl+1-{isAdmin ? "6" : "4"}</kbd> views &middot;
+        <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-dull">Ctrl+1-{isAdmin ? "8" : "5"}</kbd> views &middot;
         <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-dull">Ctrl+K</kbd> chat &middot;
         v0.1.0
       </div>

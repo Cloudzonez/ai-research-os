@@ -3,6 +3,7 @@ import { cn } from "../utils/cn.js";
 
 const NAV_ITEMS = [
   { id: "ai",         icon: "M8.625 9.75c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125V5.25h-3.75v4.5Zm-3.75 3c0 .621.504 1.125 1.125 1.125h1.5c.621 0 1.125-.504 1.125-1.125v-7.5h-3.75v7.5Z", adminOnly: false },
+  { id: "notebooks",  icon: "M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25", adminOnly: false },
   { id: "trackers",   icon: "M12 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-2 4a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm5.658 7.757A8.974 8.974 0 0 0 12 13a8.974 8.974 0 0 0-6.658 2.757A3.959 3.959 0 0 0 4 18.5v.8c0 .387.313.7.7.7h14.6c.387 0 .7-.313.7-.7v-.8c0-1.06-.422-2.076-1.172-2.826Z", adminOnly: false },
   { id: "library",    icon: "M4 4.5A2.5 2.5 0 0 1 6.5 2h11A2.5 2.5 0 0 1 20 4.5v15a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-15Z", adminOnly: false },
   { id: "writing",    icon: "M15.232 5.232a1.5 1.5 0 0 1 2.121 0l1.415 1.414a1.5 1.5 0 0 1 0 2.121l-9.9 9.9a1.5 1.5 0 0 1-.683.394l-3.5.875a.75.75 0 0 1-.914-.914l.875-3.5a1.5 1.5 0 0 1 .394-.683l9.9-9.9Z", adminOnly: false },
@@ -12,7 +13,7 @@ const NAV_ITEMS = [
 ];
 
 const LABELS = {
-  ai: "aiCenter", trackers: "trackers", library: "library", writing: "writing",
+  ai: "aiCenter", notebooks: "notebooks", trackers: "trackers", library: "library", writing: "writing",
   governance: "governance", foundry: "foundry", admin: "adminDashboard",
 };
 

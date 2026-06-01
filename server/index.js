@@ -16,6 +16,8 @@ import foundryRoutes from "./routes/foundry.js";
 import adminRoutes from "./routes/admin.js";
 import sessionRoutes from "./routes/sessions.js";
 import searchRoutes from "./routes/search.js";
+import notebookRoutes from "./routes/notebooks.js";
+
 import User from "./models/User.js";
 
 const app = express();
@@ -40,6 +42,8 @@ app.use("/api/foundry", foundryRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api/notebooks", notebookRoutes);
+
 
 async function seedDemoUser() {
   try {
@@ -83,6 +87,7 @@ async function seedDemoUser() {
 async function start() {
   console.log(`API Key configured: ${config.deepseekApiKey ? "Yes" : "No"}`);
   console.log(`DeepSeek Base URL: ${config.deepseekBaseUrl}`);
+  console.log(`NotebookLM API: ${config.notebooklmEnabled ? "Enabled" : "Disabled (set NOTEBOOKLM_API_ENABLED=true to enable)"}`);
 
   try {
     await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });

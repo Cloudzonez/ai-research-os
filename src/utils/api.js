@@ -353,6 +353,81 @@ export const api = {
       return { status: "offline" };
     }
   },
+
+  // ── Notebooks (NotebookLM) ───────────────────
+  async getNotebooks() {
+    const data = await request("/notebooks");
+    return data.notebooks || [];
+  },
+
+  async createNotebook(title, description = "", coverImage = "") {
+    const data = await request("/notebooks", {
+      method: "POST",
+      body: JSON.stringify({ title, description, coverImage }),
+    });
+    return data.notebook;
+  },
+
+  async getNotebook(id) {
+    const data = await request(`/notebooks/${id}`);
+    return data.notebook;
+  },
+
+  async updateNotebook(id, updates) {
+    const data = await request(`/notebooks/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+    return data.notebook;
+  },
+
+  async deleteNotebook(id) {
+    return request(`/notebooks/${id}`, { method: "DELETE" });
+  },
+
+  async addNotebookSource(notebookId, paperId) {
+    const data = await request(`/notebooks/${notebookId}/sources`, {
+      method: "POST",
+      body: JSON.stringify({ paperId }),
+    });
+    return data.notebook;
+  },
+
+  async removeNotebookSource(notebookId, sourceId) {
+    const data = await request(`/notebooks/${notebookId}/sources/${sourceId}`, {
+      method: "DELETE",
+    });
+    return data.notebook;
+  },
+
+  async notebookChat(notebookId, query, history = []) {
+    return request(`/notebooks/${notebookId}/chat`, {
+      method: "POST",
+      body: JSON.stringify({ query, history }),
+    });
+  },
+
+  async generateNotebookArtifact(notebookId, type) {
+    const data = await request(`/notebooks/${notebookId}/studio`, {
+      method: "POST",
+      body: JSON.stringify({ type }),
+    });
+    return data.artifact;
+  },
+
+  async deleteNotebookArtifact(notebookId, artifactId) {
+    return request(`/notebooks/${notebookId}/studio/${artifactId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async addNotebookNote(notebookId, content) {
+    const data = await request(`/notebooks/${notebookId}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    });
+    return data.note;
+  },
 };
 
 function fileToBase64(file) {

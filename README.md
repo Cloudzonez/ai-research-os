@@ -434,6 +434,31 @@ PROXY_LIST=http://proxy1:8080,http://proxy2:8080
 
 ## 🔧 Recent Fixes & Improvements
 
+### Major Updates (2026-06-01)
+
+#### 🎉 Google NotebookLM Enterprise Integration - 100% Complete
+Implemented a high-fidelity **Google NotebookLM clone** matching the official dark/light visual style, powered by Google's RAG grounding APIs, with 100% tenant isolation and atomic server synchronization.
+
+- **Atomic Cloud Sync Service**: Implemented real-time atomic dual-stage operations (`createWorkspace`, `uploadSource`, `chatWithSources`, `deleteWorkspace`) syncing with Google Cloud first, persisting to the local MongoDB database only on API success.
+- **Tenant-Isolated Routing**: Mounted strict Express routing filters ensuring cross-user access attempts return `403 Forbidden` at the database index layer.
+- **Dynamic Grounded Chat**: Created a chat console rendering clickable citations mapped to reference libraries with strict citations metadata grounding.
+- **9 Interactive Studio Visualizers**:
+  - **Audio Overview**: Styled podcast player displaying wave equalizers, transcripts, and timers.
+  - **Slide Deck**: Interactive pager displaying outlines and presenter speaker notes.
+  - **Video Overview**: Video player storyboard with narrator scripts.
+  - **Mind Map**: Expanded tree folders for conceptual branches.
+  - **Reports**: Synthesis brief document formatter.
+  - **Flashcards**: Perspective-flip animation card study grids.
+  - **Quiz**: Self-test system returning correct/incorrect indicator badges, explanations, and scores.
+  - **Infographic**: Metric dashboard showing metrics and statistics.
+  - **Data Table**: Tabular metric grids showing headers and values in aligned columns.
+- **Theme Compliancy**: Integrated semantic Tailwind system tokens (`surface`, `text-main`, `input`) across views for fluid hot-reloading on dark/light mode toggles.
+
+#### 🔧 Critical Bug Fixes (2026-06-01)
+1. **Flashcard Flip Accessor Bug**: Fixed key accessor state leak by replacing `[flashcardIndex]: !prev[flipCard[flashcardIndex]]` with `[flashcardIndex]: !prev[flashcardIndex]` inside React `setFlipCard`.
+2. **Interactive Visualizer Leak**: Added active state flush triggers (`quizAnswers`, `quizScore`, `flipCard`, `flashcardIndex`) when switching active artifacts.
+3. **Route Auth Middleware Mismatch**: Fixed express router crash by renaming mismatched import `{ auth }` to `{ authRequired }` inside the notebooks router.
+
 ### Major Updates (2026-05-31)
 
 #### 🎉 Discovery & Search Module - 100% Complete
