@@ -4,7 +4,7 @@ import { CardSkeleton, EmptyState, ErrorDisplay } from "../LoadingStates.jsx";
 import { sharingLabel } from "../../utils/sharingLabel.js";
 import { api } from "../../utils/api.js";
 
-export default function LibraryView({ t, papers: initialPapers, onUpload, onSelectPaper, isLoading: initialLoading, error, refreshPapers }) {
+export default function LibraryView({ t, onUpload, onSelectPaper, error, refreshPapers }) {
   const [papers, setPapers] = useState(initialPapers);
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
@@ -23,7 +23,10 @@ export default function LibraryView({ t, papers: initialPapers, onUpload, onSele
     finally { setLoading(false); }
   }, [page, q]);
 
-  useEffect(() => { setPapers(initialPapers); }, [initialPapers]);
+  // Load paginated data on mount — don't sync from parent to avoid overwrites
+  useEffect(() => {
+    fetchPapers(1, "");
+  }, []);
 
   const handleSearch = (val) => {
     setQ(val);
