@@ -5,6 +5,8 @@ import { buildContextBundle, DEFAULT_TIER, MAX_CONTEXT_TOKENS } from "./contextE
 import { checkBudget, recordUsage } from "./tokenFlow.js";
 import { createApproval } from "../middleware/approval.js";
 import cache from "./cache.js";
+import { extractResearchIntent } from "./researchExtractor.js";
+import { getSearchService } from "./paperSearch/index.js";
 import {
   buildSystemPrompt,
   buildContextSummary,
@@ -40,6 +42,42 @@ function jumpToTargetTier(query, currentTier) {
   if (/\b(evidence|claim|proof|verify|validate)/i.test(normalized)) return Math.max(currentTier + 1, 3);
   if (/\b(method|contribution|limitation|approach|compare|analyze)/i.test(normalized)) return Math.max(currentTier + 1, 2);
   return currentTier + 1;
+}
+
+// ─── Paper search via chat ───────────────────────────────────────
+
+async function searchPapersFromIntent(userMessage, locale) {
+  try {
+    const intent = await extractResearchIntent(userMessage, locale);
+    if (!intent.is_research || !intent.search_query) return null;
+
+    const searchService = getSearchService();
+    const result = await searchService.search({
+      query: intent.search_query,
+      maxResults: 10,
+      deduplicate: true,
+      enrich: false,
+    });
+
+    return {
+      query: intent.search_query,
+      keywords: intent.keywords,
+      papers: (result.results || []).map((p) => ({
+        title: p.title || "",
+        source: p.source || "",
+        abstract: (p.abstract || "").slice(0, 300),
+        doi: p.doi || "",
+        year: p.year,
+        url: p.url || "",
+        pdfUrl: p.pdfUrl || "",
+      })),
+      total: result.totalFetched || 0,
+      source_: "ai_extraction",
+    };
+  } catch (err) {
+    console.warn("Paper search via chat failed:", err.message);
+    return null;
+  }
 }
 
 export async function routeChat(userMessage, locale, options = {}) {
@@ -231,6 +269,9 @@ export async function routeChat(userMessage, locale, options = {}) {
 export async function routeChatStream(userMessage, locale, options = {}) {
   const { userId, sessionId, paperId, onStep, onToken } = options;
 
+  // Step 0: Kick off paper search in parallel (non-blocking)
+  const searchedPapersPromise = searchPapersFromIntent(userMessage, locale);
+
   // Step 1: Build context (so we have a real token estimate)
   if (onStep) onStep("context_building", {
     message: locale === "zh" ? "正在构建任务上下文..." : "Building task context...",
@@ -400,6 +441,16 @@ export async function routeChatStream(userMessage, locale, options = {}) {
   if (kind === "write") {
     sideEffects.draft = text;
     if (onStep) onStep("tool_complete", { tool: "generate_draft", draft: text.slice(0, 200) });
+  }
+
+  // Resolve parallel paper search and add to side effects
+  const searchedPapers = await searchedPapersPromise;
+  if (searchedPapers && searchedPapers.papers.length > 0) {
+    sideEffects.searchedPapers = searchedPapers;
+    if (onStep) onStep("papers_found", {
+      count: searchedPapers.papers.length,
+      query: searchedPapers.query,
+    });
   }
 
   // Step 5: Return final result

@@ -70,6 +70,13 @@ export default function AiCenter({ t, locale, input, setInput, submit: parentSub
               setDraft(data.sideEffects.draft);
               if (addToast) addToast(t.toastDraftGenerated, "success");
             }
+            if (data.sideEffects?.searchedPapers?.papers) {
+              const found = data.sideEffects.searchedPapers;
+              if (addToast) addToast(
+                locale === "zh" ? `找到 ${found.papers.length} 篇相关论文` : `Found ${found.papers.length} related papers`,
+                "success"
+              );
+            }
             break;
           }
 
