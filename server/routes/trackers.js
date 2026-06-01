@@ -9,12 +9,32 @@ import { runAITriage } from "../services/aiTriage.js";
 import { createTrackerDebugLog, setActiveDebugLog, clearActiveDebugLog } from "../services/trackerDebugLog.js";
 import { buildTrackerGenPrompt } from "../prompts/trackers.js";
 
+import { authRequired, authOptional } from "../middleware/auth.js";
+
 const router = Router();
 
-router.get("/", async (req, res) => {
+// GET /api/trackers — paginated, searchable
+router.get("/", authOptional, async (req, res) => {
   try {
-    const trackers = await Tracker.find().sort({ createdAt: -1 }).lean();
-    res.json({ trackers });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+    const q = (req.query.q || "").trim();
+
+    const filter = {};
+    if (q) {
+      filter.name = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
+    }
+
+    const [trackers, total] = await Promise.all([
+      Tracker.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Tracker.countDocuments(filter),
+    ]);
+
+    res.json({
+      trackers,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit), hasMore: skip + trackers.length < total },
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

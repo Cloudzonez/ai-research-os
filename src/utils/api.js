@@ -207,14 +207,32 @@ export const api = {
   },
 
   // ── Papers ──────────────────────────────────
-  async fetchPapers() {
-    const data = await request("/papers");
-    return data.papers || [];
+  async fetchPapers(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.page) qs.set("page", params.page);
+    if (params.limit) qs.set("limit", params.limit);
+    if (params.sort) qs.set("sort", params.sort);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    const data = await request(`/papers${suffix}`);
+    return { papers: data.papers || [], pagination: data.pagination };
   },
 
   async fetchPaper(paperId) {
     const data = await request(`/papers/${paperId}`);
     return data.paper || data;
+  },
+
+  async updatePaper(paperId, body) {
+    const data = await request(`/papers/${paperId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    return data.paper || data;
+  },
+
+  async deletePaper(paperId) {
+    return request(`/papers/${paperId}`, { method: "DELETE" });
   },
 
   async uploadPapers(filesOrFilenames, locale) {
@@ -273,9 +291,14 @@ export const api = {
   },
 
   // ── Trackers ────────────────────────────────
-  async fetchTrackers() {
-    const data = await request("/trackers");
-    return data.trackers || [];
+  async fetchTrackers(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.page) qs.set("page", params.page);
+    if (params.limit) qs.set("limit", params.limit);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    const data = await request(`/trackers${suffix}`);
+    return { trackers: data.trackers || [], pagination: data.pagination };
   },
 
   async fetchTrackerDetail(trackerId) {

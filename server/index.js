@@ -15,6 +15,7 @@ import dashboardRoutes from "./routes/dashboards.js";
 import logRoutes from "./routes/logs.js";
 import sessionRoutes from "./routes/sessions.js";
 import adminRoutes from "./routes/admin.js";
+import { startScheduler } from "./services/scheduler.js";
 import {
   createLogger,
   errorLoggingMiddleware,
@@ -82,6 +83,7 @@ async function start() {
 
   try {
     await mongoose.connect(config.mongoUri);
+    startScheduler(logger);
   } catch (err) {
     logger.error("MongoDB connection failed; starting without persistent database", {
       event: "mongo_connect_failed",

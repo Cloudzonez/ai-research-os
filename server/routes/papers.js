@@ -37,8 +37,23 @@ async function findDuplicate(title, doi, text) {
 // GET all papers
 router.get("/", authOptional, async (req, res) => {
   try {
-    const papers = await Paper.find().sort({ createdAt: -1 }).lean();
-    res.json({ papers });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+    const sort = req.query.sort || "createdAt";
+
+    const filter = {};
+    const q = (req.query.q || "").trim();
+    if (q) {
+      filter.title = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
+    }
+
+    const [papers, total] = await Promise.all([
+      Paper.find(filter).sort({ [sort]: -1 }).skip(skip).limit(limit).lean(),
+      Paper.countDocuments(filter),
+    ]);
+
+    res.json({ papers, pagination: { page, limit, total, totalPages: Math.ceil(total / limit), hasMore: skip + papers.length < total } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -60,6 +75,28 @@ router.get("/:id", async (req, res) => {
     const paper = await Paper.findById(req.params.id);
     if (!paper) return res.status(404).json({ error: "Not found" });
     res.json({ paper });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT update paper
+router.put("/:id", async (req, res) => {
+  try {
+    const paper = await Paper.findByIdAndUpdate(req.params.id, req.body, { new: true }).lean();
+    if (!paper) return res.status(404).json({ error: "Not found" });
+    res.json({ paper });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE paper
+router.delete("/:id", async (req, res) => {
+  try {
+    const paper = await Paper.findByIdAndDelete(req.params.id);
+    if (!paper) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
